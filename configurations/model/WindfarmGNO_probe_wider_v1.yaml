@@ -1,0 +1,19 @@
+type: "WindfarmGNO_probe"
+
+# Shared GNO settings
+latent_size: 250
+hidden_layer_size: 100
+num_mlp_layers: 2
+num_decoder_layers: 3
+decoder_hidden_layer_size: 250
+decoder_strategy: "separate" # options are "shared" and "separate"
+res_net: True
+
+# WT GNN Settings
+wt_message_passing_steps: 3
+
+# Probe GNN Settings
+probe_message_passing_steps: 1
+
+# Scale outputs
+scale_rel_ws: False

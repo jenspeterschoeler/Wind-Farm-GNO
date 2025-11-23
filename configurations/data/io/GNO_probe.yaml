@@ -1,0 +1,6 @@
+type: GNO_probe
+graph_components_target: nodes
+target_node_features: ['u']
+input_node_features: ['U', 'TI']
+add_pos_to_edges: False
+add_pos_to_nodes: True

@@ -1,0 +1,18 @@
+defaults:
+  - _self_
+  - data: mini_graphs_nodes
+  - data/io: GNO_probe
+  - model: WindfarmGNO_probe_wide
+  - model/regularization: dropout_layernorm
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff
+  - optimizer: test_adam
+  - optimizer/batching: GNO_probe_test
+  - optimizer/validation: GNO_test
+  - optimizer/lr_schedule: piecewise_constant
+  # - override model/scale_rel_ws: True
+  # - override hydra/launcher: submitit_slurm
+
+
+wandb:
+  use: False
+  project: test

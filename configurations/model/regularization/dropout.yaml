@@ -1,0 +1,10 @@
+encoder_dropout_rate: 0.1
+processor_dropout_rate: 0.1
+trunk_dropout_rate: 0.1
+decoder_dropout_rate: 0.1
+
+layer_norm_encoder: False
+layer_norm_processor: False
+message_norm: False
+layer_norm_trunk: False
+layer_norm_decoder: False  #! Should always be false

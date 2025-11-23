@@ -1,0 +1,37 @@
+defaults:
+  - _self_
+  - data: large_graphs_nodes_sophia
+  - data/io: GNO_probe
+  - optimizer: adam
+  - optimizer/validation: GNN
+  - override hydra/launcher: submitit_slurm
+wandb:
+  use: True
+  project: GNO_probe_large
+
+output_base_dir: /work/users/jpsch/SPO_sophia_dir/outputs/GNO_probe_large  # Base output directory
+hydra:
+  run:
+    dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}  # Directory for single runs
+  sweep:
+    dir: ${output_base_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}  # Directory for multiruns
+    subdir: ${hydra.job.num}  # Subdirectory for each job in a multirun
+  mode: MULTIRUN
+  sweeper:
+    params:
+      +optimizer/batching: GNO_probe2
+      +optimizer/lr_schedule: piecewise_constant_GNO_large, piecewise_constant_GNO_large2
+      +model: WindfarmGNO_probe_wider_v1, WindfarmGNO_probe_wider_v2, WindfarmGNO_probe_wider_v3
+      +model/regularization: dropout_layernorm
+      +model/RBF_dist_encoder: gaussian_cosine_cutoff
+
+
+
+  launcher:
+    array_parallelism: 8 # Maximum number of jobs to run in parallel at a time
+    additional_parameters:
+      exclusive: True
+      time: "72:00:00"
+      nodes: 1
+      partition: fatq
+

@@ -1,0 +1,7 @@
+type: "GraphFarmsOperatorDataset"
+encoding: "torch"
+main_path: "./data/mini_graphs" 
+train_path: "./data/mini_graphs/train_pre_processed"
+val_path: "./data/mini_graphs/val_pre_processed"
+test_path: "./data/mini_graphs/test_pre_processed"
+pre_processed: True

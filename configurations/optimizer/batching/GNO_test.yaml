@@ -1,0 +1,9 @@
+type: dynamic_graph_batching
+idxs_per_sample: 10
+sample_probabilities: combined
+torch_batch: 2  # The size of the torch_batch should be divisable with num_workers, but also be a multiple of the number of torch_batches per real batch (max_graph_size) to lower waiting time (but also low so that the padding is not too excessive)
+num_workers: 0
+prefetch_factor: 2 # 2 is the default value, do not change this change torch_batch instead
+max_graph_size: 5 # One higher than the actual desired size to account for the padding graph
+max_node_ratio: 1
+max_edge_ratio: 1

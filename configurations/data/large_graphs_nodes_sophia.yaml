@@ -1,0 +1,8 @@
+type: "GraphFarmsOperatorDataset"
+encoding: "torch"
+main_path: "/work/users/jpsch/SPO_sophia_dir/data/large_graphs_nodes_2"
+train_path: "/work/users/jpsch/SPO_sophia_dir/data/large_graphs_nodes_2/train_pre_processed"
+val_path: "/work/users/jpsch/SPO_sophia_dir/data/large_graphs_nodes_2/val_pre_processed"
+test_path: "/work/users/jpsch/SPO_sophia_dir/data/large_graphs_nodes_2/test_pre_processed"
+pre_processed: True
+

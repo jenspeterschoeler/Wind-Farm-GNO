@@ -1,0 +1,16 @@
+defaults:
+  - _self_
+  - data: medium_graphs_nodes
+  - data/io: GNN
+  - model: WindfarmGNN
+  - model/regularization: dropout_layernorm
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff
+  - optimizer: test_adam
+  - optimizer/batching: GNN_test
+  - optimizer/validation: GNN_test
+  - optimizer/lr_schedule: piecewise_constant
+  # - override hydra/launcher: submitit_slurm
+
+wandb:
+  use: False
+  project: GNN

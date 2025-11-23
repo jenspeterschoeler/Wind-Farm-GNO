@@ -1,0 +1,4 @@
+type: "piecewise_constant"
+init_learning_rate: .5e-2
+boundaries: [500, 1000] # Boundaries at which to multiply the learning rate by the corresponding scale
+scales: [.1, .1] # Multiplication factor at each boundary

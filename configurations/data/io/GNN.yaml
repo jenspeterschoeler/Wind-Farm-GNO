@@ -1,0 +1,5 @@
+type: GNN
+graph_components_target: nodes
+targets: ['U', 'TI']
+add_pos_to_edges: False
+add_pos_to_nodes: False

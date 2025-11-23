@@ -1,0 +1,4 @@
+torch_batch: 1
+num_workers: 0
+rate_of_validation: 1 # how often the validation is done in epochs
+prefetch_factor: 2 # 2 is the default value, do not change this change torch_batch instead

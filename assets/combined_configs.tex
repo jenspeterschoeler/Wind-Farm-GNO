@@ -1,0 +1,35 @@
+% DO NOT EDIT THIS TABLE CHANGE IT IN CODE, SEE https://gitlab.windenergy.dtu.dk/superposition-operator/spo-operator-tests/-/blob/main/Experiments/articles_plotting/grid_search.py?ref_type=heads 
+\begin{table}
+\caption{Model and optimizer configurations used in the grid search. $\dagger$ indicates that the learning rate schedule was not triggered during training.}
+\label{tab:model_and_opt_configs}
+\begin{tabular}{cp{2cm}cccc}
+\hline
+\multicolumn{6}{l}{\textbf{Model configurations}} \\
+ID & Latent dim. $Q$ & $L_\mathrm{int}$ & $q_\mathrm{int}$ & $L_\mathrm{dec}$ & $q_\mathrm{dec}$ \\
+\hline
+a & 150 & 2 & 100 & 3 & 150 \\
+b & 150 & 2 & 100 & 3 & 250 \\
+c & 150 & 2 & 200 & 3 & 150 \\
+d & 150 & 2 & 200 & 3 & 250 \\
+e & 250 & 2 & 100 & 3 & 150 \\
+f & 250 & 2 & 100 & 3 & 250 \\
+g & 250 & 2 & 200 & 3 & 150 \\
+h & 250 & 2 & 200 & 3 & 250 \\
+i & 100 & 3 & 75 & 3 & 250 \\
+j & 100 & 2 & 250 & 3 & 350 \\
+k & 50 & 3 & 350 & 4 & 350 \\
+\hline\multicolumn{6}{l}{\textbf{Optimizer configurations}} \\
+ID & LR type & LR & Triggers & $n_\mathrm{p}$ & $n_G$ \\
+\hline
+1 & Piecewise constant$\dagger$ & 0.005 & [500, 1000] & 200 & 5 \\
+2 & Piecewise constant & 0.005 & [75, 150] & 200 & 5 \\
+3 & Constant & 0.001 & - & 200 & 5 \\
+4 & Piecewise constant & 0.001 & [75, 150] & 200 & 5 \\
+5 & Piecewise constant & 0.005 & [75, 150] & 300 & 4 \\
+6 & Piecewise constant & 0.001 & [75, 150] & 300 & 4 \\
+7 & Piecewise constant & 0.010 & [75, 150] & 200 & 5 \\
+8 & Piecewise constant$\dagger$ & 0.005 & [75, 150] & 500 & 2 \\
+9 & Piecewise constant$\dagger$ & 0.010 & [75, 150] & 500 & 2 \\
+\hline
+\end{tabular}
+\end{table}

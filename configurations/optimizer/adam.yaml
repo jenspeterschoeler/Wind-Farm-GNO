@@ -1,0 +1,13 @@
+# defaults:
+#   - _self_
+#   - batching: GNO_dynamic
+#   - validation: GNO
+#   - lr_schedule: constant
+
+algorithm: adam
+n_epochs: 3000
+
+early_stop:
+  start_epoch: 25
+  criteria: 1e-7
+  patience: 1000 # is divided with the rate_of_validation when initialized

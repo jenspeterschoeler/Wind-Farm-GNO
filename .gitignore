@@ -1,0 +1,26 @@
+__pycache__*
+models/NOMAD_example/*
+Experiments/torch_loader/__pycache__*
+model/*
+wandb/*
+Experiments/wandb/wandb*
+logs/*
+2025-*
+15-16*
+*.ipynb_checkpoints*
+*.vscode
+
+data/*
+outputs/*
+*train_farm_graph_model*
+*runs/*
+!runs/.gitkeep
+*.png
+*.pdf
+*.svg
+*.prof# pixi environments
+.pixi/*
+!.pixi/config.toml
+!data/mini_graphs*
+!assets/GNO*.png
+!assets/GNO*.svg

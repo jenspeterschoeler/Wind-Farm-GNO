@@ -1,0 +1,4 @@
+type: "gaussian_cosine_cutoff"
+num_kernels: 9 # 1<=num_kernels<=20 in paper, uneven number guaranties a basis in the middle
+extrema_strategy: "pre_processed_ones"
+learnable: True

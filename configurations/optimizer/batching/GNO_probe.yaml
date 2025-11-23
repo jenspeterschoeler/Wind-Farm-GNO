@@ -1,0 +1,8 @@
+type: dynamic_graph_batching
+torch_batch: 1  #! For the GNO_probe model this can only be 1, due to the reconstruction of nodes inside the model.
+num_workers: 12 # one higher than needed and based on calcuations, this is in case the calculation is not exact
+prefetch_factor: 2 # 2 is the default value, do not change this change torch_batch instead
+max_graph_size: 5 # One higher than the actual desired size to account for the padding graph
+max_node_ratio: 1 #0.7
+max_edge_ratio: 1 # 0.55
+n_probe: 200

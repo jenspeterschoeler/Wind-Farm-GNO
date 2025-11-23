@@ -1,0 +1,43 @@
+defaults:
+  - _self_
+  - data: large_graphs_nodes_sophia
+  - data/io: GNO_probe
+  - model: WindfarmGNO_probe_wide
+  - optimizer: adam
+  - optimizer/batching: GNO_probe
+  - optimizer/validation: GNN
+  - model/regularization: dropout_layernorm
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff
+  - override hydra/launcher: submitit_slurm
+wandb:
+  use: True
+  project: GNO_probe_large
+
+output_base_dir: /work/users/jpsch/SPO_sophia_dir/outputs/GNO_probe_large  # Base output directory
+hydra:
+  run:
+    dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}  # Directory for single runs
+  sweep:
+    dir: ${output_base_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}  # Directory for multiruns
+    subdir: ${hydra.job.num}  # Subdirectory for each job in a multirun
+  mode: MULTIRUN
+  sweeper:
+    params:
+      ++optimizer.early_stop.start_epoch: 25 # Number of epochs to wait before stopping the training
+      ++model.latent_size: 250
+      ++model.scale_rel_ws: False
+      ++model.hidden_layer_size: choice(100, 200)
+      ++model.num_decoder_layers: 3
+      ++model.decoder_hidden_layer_size: 250
+      ++optimizer.batching.n_probe: choice(400, 200)
+      +optimizer/lr_schedule: piecewise_constant_GNO_large, constant
+
+
+  launcher:
+    array_parallelism: 8 # Maximum number of jobs to run in parallel at a time
+    additional_parameters:
+      exclusive: True
+      time: "72:00:00"
+      nodes: 1
+      partition: fatq
+

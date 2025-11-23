@@ -1,0 +1,22 @@
+defaults:
+  - _self_
+  - data: large_graphs_nodes_sophia
+  - data/io: GNO_probe
+  - model: WindfarmGNO_probe_wide
+  - model/regularization: dropout_layernorm
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff
+  - optimizer: adam
+  - optimizer/batching: GNO_probe
+  - optimizer/validation: GNN # Can be re-used because n_probe is added in batching
+  - optimizer/lr_schedule: piecewise_constant
+
+wandb:
+  use: True
+  project: GNO_probe_large
+
+output_base_dir: /work/users/jpsch/SPO_sophia_dir/outputs/GNO_probe_large  # Base output directory
+
+hydra:
+  run:
+    dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}  # Directory for single runs
+

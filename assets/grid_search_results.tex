@@ -1,0 +1,43 @@
+% DO NOT EDIT THIS TABLE CHANGE IT IN CODE, SEE https://gitlab.windenergy.dtu.dk/superposition-operator/spo-operator-tests/-/blob/main/Experiments/articles_plotting/grid_search.py?ref_type=heads 
+\begin{table}
+\caption{Trained models from the grid search ranked by validation MSE$_\mathrm{val}$.}
+\label{tab:grid_search_results}
+\begin{tabular}{p{1cm}p{1cm}p{1cm}p{1cm}p{1cm}p{1cm}}
+\hline
+Grid search & Model ID & Optimizer ID & MSE$_\mathrm{trn} \times 10^{-3}$ & MSE$_\mathrm{val} \times 10^{-3}$ & MAE$_\mathrm{val} \times 10^{-3}$ \\
+\hline
+V & j & 8 & 0.018 & \textbf{0.018} & \textbf{1.266} \\
+IV & k & 2 & 0.018 & 0.019 & 1.291 \\
+IV & j & 2 & \textbf{0.016} & 0.021 & 1.412 \\
+I & d & 1 & 0.021 & 0.024 & 1.538 \\
+III & a & 6 & 0.020 & 0.026 & 1.978 \\
+I & h & 1 & 0.018 & 0.026 & 1.482 \\
+I & a & 1 & 0.024 & 0.027 & 1.788 \\
+I & g & 1 & 0.021 & 0.027 & 1.692 \\
+I & e & 1 & 0.027 & 0.027 & 2.073 \\
+III & a & 5 & 0.029 & 0.027 & 1.916 \\
+II & h & 2 & 0.019 & 0.028 & 1.707 \\
+III & a & 4 & 0.021 & 0.031 & 2.211 \\
+III & i & 6 & 0.021 & 0.032 & 2.054 \\
+I & f & 1 & 0.026 & 0.032 & 1.899 \\
+IV & f & 2 & 0.030 & 0.034 & 2.157 \\
+V & k & 8 & 0.022 & 0.035 & 1.947 \\
+IV & j & 7 & 0.021 & 0.035 & 1.967 \\
+III & i & 4 & 0.022 & 0.040 & 2.804 \\
+V & f & 9 & 0.036 & 0.046 & 1.973 \\
+II & f & 2 & 0.025 & 0.046 & 2.341 \\
+I & b & 1 & 0.025 & 0.057 & 2.610 \\
+V & f & 8 & 0.028 & 0.062 & 2.201 \\
+III & i & 2 & 0.026 & 0.062 & 3.938 \\
+V & j & 9 & 0.023 & 0.063 & 2.208 \\
+I & c & 1 & 0.020 & 0.075 & 2.582 \\
+III & i & 5 & 0.023 & 0.088 & 4.807 \\
+IV & f & 7 & 0.034 & 0.116 & 3.584 \\
+III & a & 2 & 0.029 & 0.166 & 4.693 \\
+V & k & 9 & 0.119 & 0.251 & 6.398 \\
+II & f & 3 & 0.197 & 0.273 & 7.646 \\
+IV & k & 7 & 0.196 & 0.275 & 7.799 \\
+II & h & 3 & 0.198 & 0.281 & 7.115 \\
+\hline
+\end{tabular}
+\end{table}
