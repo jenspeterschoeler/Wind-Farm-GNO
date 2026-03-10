@@ -1,0 +1,78 @@
+# Turbopark Pretraining Grid Search Configuration
+# Tests model architectures and regularization strategies on Turbopark test dataset
+#
+# Grid Design:
+#   - 3 model architectures (S1_global, L1_global, best_vj8_global)
+#   - 2 regularization strategies (dropout, dropout_layernorm)
+#   - Total: 6 jobs
+#
+# Usage:
+#   python train_GNO_probe.py --config-name turbopark_pretrain_grid
+#
+# Test with mini dataset:
+#   python train_GNO_probe.py --config-name turbopark_pretrain_grid data=mini_graphs_nodes optimizer.n_epochs=2
+
+defaults:
+  - _self_
+  - data: turbopark_test  # Turbopark test dataset
+  - data/io: GNO_probe
+  - optimizer: test_adam  # Quick test: 10 epochs (change to 'adam' for full 3000 epochs)
+  - optimizer/batching: GNO_probe_test
+  - optimizer/validation: GNN
+  - optimizer/lr_schedule: constant
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff
+  - override hydra/launcher: basic  # Local execution (sequential)
+
+wandb:
+  use: False  # Set to True for WandB logging
+  project: GNO_turbopark_pretrain_grid
+
+# Local output directory
+output_base_dir: ./outputs/turbopark_pretrain_grid
+
+hydra:
+  run:
+    dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${output_base_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}  # Each job gets numbered subdirectory
+  mode: MULTIRUN
+  sweeper:
+    params:
+      # Model architecture sweep (3 variants)
+      +model: WindfarmGNO_probe_S1_global, WindfarmGNO_probe_L1_global, WindfarmGNO_probe_best_vj8_global
+      # Regularization sweep (2 variants)
+      +model/regularization: dropout, dropout_layernorm
+
+  # launcher config not needed for basic launcher (runs sequentially)
+
+# # Sophia cluster configuration (commented out for local use)
+# # Uncomment and adjust paths to run on Sophia cluster
+# #
+# # output_base_dir: /work/users/jpsch/SPO_sophia_dir/outputs/turbopark_pretrain_grid
+# #
+# # hydra:
+# #   run:
+# #     dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}
+# #   sweep:
+# #     dir: ${output_base_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+# #     subdir: ${hydra.job.num}
+# #   mode: MULTIRUN
+# #   sweeper:
+# #     params:
+# #       # Model architecture sweep (3 variants)
+# #       +model: WindfarmGNO_probe_S1_global, WindfarmGNO_probe_L1_global, WindfarmGNO_probe_best_vj8_global
+# #       # Regularization sweep (2 variants)
+# #       +model/regularization: dropout, dropout_layernorm
+# #
+# #   launcher:
+# #     _target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
+# #     array_parallelism: 8  # Max 8 parallel SLURM jobs
+# #     additional_parameters:
+# #       partition: fatq,gpuq  # GPU partitions (automatically allocate GPU)
+# #       exclusive: True       # Exclusive node access
+# #       time: "12:00:00"      # 12 hour wall time
+# #     setup:
+# #       # Activate pixi cluster environment (compatible with old CentOS + CUDA 12)
+# #       - export PIXI_PROJECT_ROOT=/work/users/jpsch/SPO_sophia_dir/gno
+# #       - eval "$(pixi shell-hook -e cluster)"

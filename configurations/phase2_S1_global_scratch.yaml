@@ -1,0 +1,54 @@
+# Phase 2: S1 Global From-Scratch Baseline on AWF Dataset
+# Trains S1 architecture from random initialization for comparison with fine-tuning.
+#
+# Model:
+#   - S1 global: latent=25, hidden=50, global conditioning (same arch as Phase 2 fine-tuning)
+#
+# Key differences from phase2_S1_global_combined.yaml:
+#   - Standard optimizer (adam, 3000 epochs) instead of finetune_adam (1000 epochs)
+#   - Standard LR schedule (piecewise_constant, 0.005 init) instead of finetune_constant (5e-5)
+#   - No finetuning section (no techniques, no gradient clipping)
+#   - 72h time limit (from-scratch training takes longer)
+#
+# Usage:
+#   sbatch scripts/sophia_phase2_S1_global_scratch.sh
+#
+# Or manually:
+#   python main.py --config-name phase2_S1_global_scratch
+
+defaults:
+  - _self_
+  - data: awf_graphs
+  - data/io: GNO_probe
+  - optimizer: adam
+  - optimizer/batching: GNO_probe
+  - optimizer/validation: GNN
+  - optimizer/lr_schedule: piecewise_constant
+  - model/regularization: dropout_layernorm
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff
+  - override hydra/launcher: submitit_slurm
+
+wandb:
+  use: True
+  project: GNO_phase2_global
+
+output_base_dir: /work/users/jpsch/gno/outputs/transfer_learning/phase2_global
+
+hydra:
+  run:
+    dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${output_base_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}_${hydra.job.override_dirname}
+  mode: MULTIRUN
+  sweeper:
+    params:
+      +experiment: phase2/S1_global_scratch
+
+  launcher:
+    array_parallelism: 1  # Only 1 job
+    additional_parameters:
+      exclusive: True
+      time: "72:00:00"
+      nodes: 1
+      partition: fatq

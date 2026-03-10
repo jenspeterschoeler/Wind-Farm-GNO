@@ -1,0 +1,8 @@
+# Freeze everything except decoder
+# Minimal fine-tuning for task adaptation
+enabled: true
+strategy: component
+frozen_components:
+  - embedder
+  - wt_processor
+  - probe_processor

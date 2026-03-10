@@ -1,0 +1,6 @@
+# @package _global_
+# Phase 2: VJ8 global model trained from scratch (baseline)
+defaults:
+  - /model: WindfarmGNO_probe_best_vj8_global
+
+pretrained_checkpoint_path: null

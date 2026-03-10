@@ -1,0 +1,3 @@
+[submodule "data-generation"]
+	path = data-generation
+	url = https://github.com/jenspeterschoeler/Wind-farm-Graph-flow-data.git

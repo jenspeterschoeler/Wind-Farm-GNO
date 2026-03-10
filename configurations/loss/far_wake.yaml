@@ -1,0 +1,29 @@
+# Far-wake weighted loss configuration
+#
+# This loss function prioritizes accuracy in far-wake regions (downstream areas
+# where velocity recovers toward freestream). Standard MSE treats all regions
+# equally, which often leads to under-prediction of velocity recovery.
+#
+# The loss weights errors based on velocity deficit:
+# - Strong wake (>15% deficit): standard weight (1.0)
+# - Moderate wake (5-15% deficit): interpolated weight
+# - Far-wake (<5% deficit): higher weight to prioritize accuracy
+#
+# Usage:
+#   python train_GNO_probe.py +loss=far_wake
+#   python train_GNO_probe.py model=WindfarmGNO_probe_best_vj8 +loss=far_wake
+#
+# Parameters can be overridden on command line:
+#   python train_GNO_probe.py +loss=far_wake loss.far_wake_weight=3.0
+
+type: "far_wake_weighted"
+
+# Velocity deficit thresholds (layout-agnostic, based on U/U_inf)
+# strong_wake_threshold: deficit > this is considered strong wake (weight = 1.0)
+# weak_wake_threshold: deficit < this is considered far-wake (weight = far_wake_weight)
+strong_wake_threshold: 0.15  # >15% deficit = strong wake
+weak_wake_threshold: 0.05    # <5% deficit = far-wake (recovering)
+
+# Weight multiplier for far-wake region errors
+# Values > 1 prioritize far-wake accuracy over near-wake
+far_wake_weight: 2.0

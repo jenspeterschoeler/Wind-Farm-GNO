@@ -1,18 +1,18 @@
+"""PyWake simulation runner for reference predictions."""
+
 import os
 import sys
-from typing import Dict
 
 import numpy as np
-import pandas as pd
 from py_wake import HorizontalGrid
 from py_wake.deficit_models import NiayifarGaussianDeficit, SelfSimilarityDeficit2020
 from py_wake.examples.data.dtu10mw import DTU10MW
 from py_wake.site._site import UniformSite
-from py_wake.superposition_models import LinearSum, SquaredSum
+from py_wake.superposition_models import LinearSum
 from py_wake.turbulence_models import CrespoHernandez
 
 # LinearSum
-from py_wake.wind_farm_models import All2AllIterative, PropagateDownwind
+from py_wake.wind_farm_models import All2AllIterative
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -24,11 +24,12 @@ D_10_MW = wt.diameter()
 
 
 def simulate_farm(
-    inflow_dict: Dict,
+    inflow_dict: dict,
     positions: np.ndarray,
     grid: HorizontalGrid,
     convert_to_graph=False,
-    to_graph_kws: Dict = None,
+    to_graph_kws: dict | None = None,
+    wf_model=None,
 ):
     """Function to simulate the power and loads of a wind farm given the inflow conditions and the
     wind turbine positions using PyWake. The function will return the simulated power and loads
@@ -49,14 +50,15 @@ def simulate_farm(
 
     wt = DTU10MW()
 
-    wf_model = All2AllIterative(
-        site,
-        wt,
-        wake_deficitModel=NiayifarGaussianDeficit(),
-        blockage_deficitModel=SelfSimilarityDeficit2020(),
-        superpositionModel=LinearSum(),
-        turbulenceModel=CrespoHernandez(),
-    )
+    if wf_model is None:
+        wf_model = All2AllIterative(
+            site,
+            wt,
+            wake_deficitModel=NiayifarGaussianDeficit(use_effective_ws=True),
+            blockage_deficitModel=SelfSimilarityDeficit2020(),
+            superpositionModel=LinearSum(),
+            turbulenceModel=CrespoHernandez(),
+        )
 
     farm_sims = []
     flow_maps = []
@@ -73,7 +75,7 @@ def simulate_farm(
         farm_sims.append(farm_sim)
         flow_maps.append(flow_map)
 
-    xx, yy = np.meshgrid(grid.x, grid.y)
+    xx, yy = np.meshgrid(grid.x, grid.y)  # type: ignore[call-overload]
     x_grid = xx.flatten()
     y_grid = yy.flatten()
     xy_grid = np.array([x_grid, y_grid]).T
@@ -100,7 +102,7 @@ def simulate_farm(
                 global_features=global_features,
                 trunk_inputs=xy_grid,
                 output_features=output_features,
-                **to_graph_kws,
+                **to_graph_kws,  # type: ignore[arg-type]
             )
             graph_list.append(graph)
         return graph_list, original_trunk_shape
@@ -148,13 +150,8 @@ def get_crosstream_probe_graph(
     data_idx=0,
     D=D_10_MW,
 ):
-
-    assert (
-        scale_stats["scaling_type"] == "min_max"
-    ), "Hardcoding: only min-max scaling is supported"
-    assert (
-        scale_stats["scaling_method"] == "run4"
-    ), "Hardcoding: only run4 type is supported"
+    assert scale_stats["scaling_type"] == "min_max", "Hardcoding: only min-max scaling is supported"
+    assert scale_stats["scaling_method"] == "run4", "Hardcoding: only run4 type is supported"
 
     org_graph = dataset[data_idx]
 
@@ -181,17 +178,13 @@ def get_crosstream_probe_graph(
     )
 
     graph = construct_test_graph(org_positions, U, TI, grid)
-    scaled_graph = min_max_scale(
-        graph, scale_stats, scaling_method=scale_stats["scaling_method"]
-    )
+    scaled_graph = min_max_scale(graph, scale_stats, scaling_method=scale_stats["scaling_method"])
     scaled_graph = append_globals_to_nodes(scaled_graph)
 
     io_tuple_probe_graph = data_loader.torch_pyg_to_jraph(graph)
     jraph_graph, probe_graph, array_tuple = io_tuple_probe_graph
     probe_targets, wt_mask, probe_mask = array_tuple
-    wt_mask = wt_mask.reshape(
-        -1, 1
-    )  # This empty dimension is normally added by the batcher
+    wt_mask = wt_mask.reshape(-1, 1)  # This empty dimension is normally added by the batcher
     probe_mask = probe_mask.reshape(-1, 1)
 
     return (
@@ -210,6 +203,7 @@ def construct_on_the_fly_probe_graph(
     grid,
     scale_stats,
     return_positions: bool = False,
+    wf_model=None,
 ):
     inflow_dict = {
         "u": U,
@@ -228,6 +222,7 @@ def construct_on_the_fly_probe_graph(
         grid=grid,
         convert_to_graph=True,
         to_graph_kws=to_graph_kws,
+        wf_model=wf_model,
     )
     pyg_graph = pyg_graph[
         0
@@ -270,9 +265,7 @@ if __name__ == "__main__":
     from utils.weight_converter import load_portable_model
 
     #### Shared Parameters ####
-    # test_data_path = "/home/jpsch/code/spo-operator-tests/data/medium_graphs_nodes/test_pre_processed"  # Local path
-
-    test_data_path = "/work/users/jpsch/SPO_sophia_dir/data/large_graphs_nodes_2/test_pre_processed"  # HPC path
+    test_data_path = os.path.abspath("./data/large_graphs_nodes_2/test_pre_processed")
 
     dataset = Torch_Geomtric_Dataset(test_data_path, in_mem=False)
 

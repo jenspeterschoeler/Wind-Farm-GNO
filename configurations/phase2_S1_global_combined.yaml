@@ -1,0 +1,71 @@
+# Phase 2: S1 Global Context Fine-tuning on AWF Dataset - Sophia Cluster
+# Runs all 22 experiments (11 techniques x 2 clipping options) in one sweep
+#
+# Model:
+#   - S1 global: Best Phase 1 architecture (latent=25, hidden=50, global conditioning)
+#
+# Techniques:
+#   - F1: Full fine-tune (baseline)
+#   - F2: Freeze embedder
+#   - F3: Freeze embedder + processor
+#   - F4: Decoder only trainable
+#   - F5: Full + weight anchoring (lambda=0.01)
+#   - F6: Freeze embedder + weight anchoring (lambda=0.001)
+#   - L1: LoRA rank 4
+#   - L2: LoRA rank 8
+#   - L3: LoRA rank 16
+#   - L4: LoRA rank 8 + freeze embedder
+#   - L6: LoRA rank 4 + weight anchoring (lambda=0.001)
+#
+# Gradient clipping:
+#   - With clipping (clip_1.0)
+#   - Without clipping (disabled)
+#
+# Usage:
+#   sbatch scripts/sophia_phase2_S1_global.sh
+#
+# Or manually:
+#   python main.py --config-name phase2_S1_global_combined
+
+defaults:
+  - _self_
+  - data: awf_graphs
+  - data/io: GNO_probe
+  - optimizer: finetune_adam
+  - optimizer/batching: GNO_probe
+  - optimizer/validation: GNN
+  - model/regularization: dropout_layernorm
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff
+  - finetuning/gradient_clipping: clip_1.0
+  - finetuning/representation_consistency: disabled
+  - override hydra/launcher: submitit_slurm
+
+finetuning:
+  enabled: true
+
+wandb:
+  use: True
+  project: GNO_phase2_global
+
+output_base_dir: /work/users/jpsch/gno/outputs/transfer_learning/phase2_global
+
+hydra:
+  run:
+    dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${output_base_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}_${hydra.job.override_dirname}
+  mode: MULTIRUN
+  sweeper:
+    params:
+      # 22 experiments: 11 techniques x 2 clipping options (cross-product)
+      +experiment: phase2/S1_global_F1,phase2/S1_global_F2,phase2/S1_global_F3,phase2/S1_global_F4,phase2/S1_global_F5,phase2/S1_global_F6,phase2/S1_global_L1,phase2/S1_global_L2,phase2/S1_global_L3,phase2/S1_global_L4,phase2/S1_global_L6
+      finetuning/gradient_clipping: clip_1.0,disabled
+
+  launcher:
+    array_parallelism: 8  # Run 8 jobs at a time
+    additional_parameters:
+      exclusive: True
+      time: "48:00:00"
+      nodes: 1
+      partition: fatq

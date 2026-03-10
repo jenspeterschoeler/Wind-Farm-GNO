@@ -1,0 +1,11 @@
+# AWF (Actuator Wind Farm) full dataset configuration
+# Dataset location: data-generation/data/awf_graphs (on Sophia cluster)
+# Pre-processed with 60/20/20 train/val/test split
+
+type: "GraphFarmsOperatorDataset"
+encoding: "torch"
+main_path: "/work/users/jpsch/gno/data-generation/data/awf_graphs"
+train_path: "/work/users/jpsch/gno/data-generation/data/awf_graphs/train_pre_processed"
+val_path: "/work/users/jpsch/gno/data-generation/data/awf_graphs/val_pre_processed"
+test_path: "/work/users/jpsch/gno/data-generation/data/awf_graphs/test_pre_processed"
+pre_processed: True

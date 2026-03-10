@@ -1,0 +1,6 @@
+# Piecewise constant LR schedule for Phase 1 experiments with lower init_lr
+# Lower initial LR (0.001) for potentially more stable training
+type: "piecewise_constant"
+init_learning_rate: 0.001
+boundaries: [200, 350]
+scales: [0.1, 0.1]

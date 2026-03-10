@@ -55,7 +55,7 @@ def load_portable_model(params_path, model_cfg_path, dataset=None, inputs=None):
     """
     Load the model from a portable file.
     """
-    with open(model_cfg_path, "r") as f:
+    with open(model_cfg_path) as f:
         nested_dict = json.load(f)
         restored_cfg_model = DictConfig(nested_dict)
     model = setup_model(restored_cfg_model)

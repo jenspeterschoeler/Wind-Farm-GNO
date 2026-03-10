@@ -1,0 +1,4 @@
+# Representation consistency with lambda=0.01 (Phase 2 - NOT IMPLEMENTED)
+# Requires model modifications to return intermediate activations
+enabled: false
+lambda_consistency: 0.01

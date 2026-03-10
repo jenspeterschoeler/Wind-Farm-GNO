@@ -1,10 +1,12 @@
+"""PyTorch Geometric dataset loader with on-the-fly Jraph conversion."""
+
 import io
 import os
 import warnings
-from typing import Any, Generator, Iterator, List, Tuple, Union
+from collections.abc import Generator, Iterator
+from typing import Any
 from zipfile import ZipFile
 
-import jax
 import jraph
 import numpy as np
 import torch
@@ -17,8 +19,8 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
-NestedListStr = Union[str, List["NestedListStr"]]
-import logging
+NestedListStr = str | list["NestedListStr"]
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +63,10 @@ class Torch_Geomtric_Dataset(Dataset):
         if self.in_mem:
             self._cache = [
                 self._open_single_content_in_zip((zip_path, zip_item))
-                for zip_path, zip_item in zip(
-                    self.zip_paths_repeated, self.zip_contents
-                )
+                for zip_path, zip_item in zip(self.zip_paths_repeated, self.zip_contents)
             ]
 
-    def _open_zip(self, zip_construct: List[str]) -> Tuple[Any, ...]:
+    def _open_zip(self, zip_construct: list[str]) -> tuple[Any, ...]:
         """Open a zip file and return a tuple of loaded items."""
         zip_path = zip_construct[0]
         zip_items = zip_construct[1:]
@@ -79,13 +79,12 @@ class Torch_Geomtric_Dataset(Dataset):
                     content += (data,)
         return content
 
-    def _open_single_content_in_zip(self, zip_construct: Tuple[str, str]) -> Any:
+    def _open_single_content_in_zip(self, zip_construct: tuple[str, str]) -> Any:
         """Open a single item from a zip file."""
         zip_path, zip_item = zip_construct
-        with ZipFile(zip_path) as zf:
-            with zf.open(zip_item) as f:
-                stream = io.BytesIO(f.read())
-                data = torch.load(stream, weights_only=False)
+        with ZipFile(zip_path) as zf, zf.open(zip_item) as f:
+            stream = io.BytesIO(f.read())
+            data = torch.load(stream, weights_only=False)
         return data
 
     def _create_zip_matrix(self) -> NestedListStr:
@@ -97,6 +96,10 @@ class Torch_Geomtric_Dataset(Dataset):
             for name in files
         ]
         zip_list = [zip_file for zip_file in zip_list if zip_file.endswith(".zip")]
+
+        # IMPORTANT: Sort for deterministic ordering across filesystems
+        # os.walk() returns files in arbitrary order, which breaks reproducibility
+        zip_list.sort()
         self.zip_list = zip_list
 
         zip_matrix = []
@@ -104,11 +107,13 @@ class Torch_Geomtric_Dataset(Dataset):
         for zip_path in zip_list:
             with ZipFile(zip_path, "r") as zip_ref:
                 zip_items = zip_ref.namelist()
+            # Sort items within zip for deterministic ordering
+            zip_items = sorted(zip_items)
             # Store the zip path along with its items (unpack so each becomes a tuple element)
             zip_matrix.append((zip_path, *zip_items))
         return zip_matrix
 
-    def _create_indexes(self) -> Tuple[List[str], List[str]]:
+    def _create_indexes(self) -> tuple[list[str], list[str]]:
         """Create lists of zip paths repeated and corresponding zip item names."""
         all_zip_paths_repeated = []
         all_zip_item_names = []
@@ -122,7 +127,7 @@ class Torch_Geomtric_Dataset(Dataset):
     def __len__(self) -> int:
         return len(self.zip_paths_repeated)
 
-    def __getitem__(self, index: int) -> Any:
+    def __getitem__(self, index: int) -> Any:  # type: ignore[override]
         if self.in_mem:
             # Return the preloaded item from cache.
             return self._cache[index]
@@ -153,7 +158,9 @@ def sum_by_parts_torch(numbers, lengths):
     return result
 
 
-def load_sample_probabilities(probabilities_path: str) -> torch.Tensor:
+def load_sample_probabilities(
+    probabilities_path: str,
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Load the sample probabilities from a .npz file."""
 
     with np.load(probabilities_path) as data:
@@ -185,9 +192,7 @@ class JraphDataLoader:
         return_layout_info=False,
         **kwargs,
     ):
-        self.pyg_loader = PyGDataLoader(
-            dataset, batch_size=batch_size, shuffle=shuffle, **kwargs
-        )
+        self.pyg_loader = PyGDataLoader(dataset, batch_size=batch_size, shuffle=shuffle, **kwargs)
         self.stats = stats
 
         self.idxs_per_sample = idxs_per_sample
@@ -227,25 +232,21 @@ class JraphDataLoader:
             assert self.probe_graphs, "return_positions requires probe_graphs"
 
         if self.probe_graphs:
-            assert (
-                self.add_pos_to_nodes == 1
-            ), "add_pos_to_nodes must be True for probe_graphs"
+            assert self.add_pos_to_nodes == 1, "add_pos_to_nodes must be True for probe_graphs"
         if self.idxs_per_sample is not None:
             self.random_generator = torch.Generator()
             self.random_generator.manual_seed(123)
 
         if self.sample_probabilities_path is not None:
-            assert (
-                idxs_per_sample is not None
-            ), "sample_weights_path requires idxs_per_sample"
+            assert idxs_per_sample is not None, "sample_weights_path requires idxs_per_sample"
             self.sample_probabilities, self.org_shape = load_sample_probabilities(
                 self.sample_probabilities_path
             )
 
         if self.sample_stepsize > 1:
-            assert (
-                idxs_per_sample is None
-            ), "idxs_per_sample and sample_stepsize cannot be used together"
+            assert idxs_per_sample is None, (
+                "idxs_per_sample and sample_stepsize cannot be used together"
+            )
 
         self.return_layout_info = return_layout_info
 
@@ -291,10 +292,7 @@ class JraphDataLoader:
             ]
         )
         senders = np.concatenate(
-            [
-                np.tile(np.arange(n) + n_old, n_probes)
-                for n, n_old in zip(n_nodes, node_count)
-            ]
+            [np.tile(np.arange(n) + n_old, n_probes) for n, n_old in zip(n_nodes, node_count)]
         )
 
         ### Receivers
@@ -312,9 +310,7 @@ class JraphDataLoader:
 
         ### Edges
         probe_positions_flat = probe_positions.reshape(-1, 2)
-        wt_to_probe_edges = (
-            node_pos[senders, :] - probe_positions_flat[probe_index_locals, :]
-        )
+        wt_to_probe_edges = node_pos[senders, :] - probe_positions_flat[probe_index_locals, :]
         # append distances to the probe positions
         distances = np.sqrt(np.sum(wt_to_probe_edges**2, axis=1)).reshape(-1, 1)
         wt_to_probe_edges = np.concatenate([wt_to_probe_edges, distances], axis=1)
@@ -322,9 +318,9 @@ class JraphDataLoader:
         n_edges = graphs.n_node * n_probes
 
         ## Nodes
-        assert (
-            len(input_node_feature_idxs) == graphs.globals.shape[-1]
-        ), "The input_node_feature_idxs must match the number of node features in the globals."  # TODO Improve this to mean they are the same dimension exactly not just shape
+        assert len(input_node_feature_idxs) == graphs.globals.shape[-1], (
+            "The input_node_feature_idxs must match the number of node features in the globals."
+        )  # TODO Improve this to mean they are the same dimension exactly not just shape
         probe_node_features = np.concatenate(
             [
                 graphs.nodes[
@@ -361,8 +357,8 @@ class JraphDataLoader:
         probe_graphs = jraph.GraphsTuple(
             nodes=probe_node_features,
             edges=wt_to_probe_edges,
-            senders=senders,
-            receivers=probe_receivers,
+            senders=senders,  # type: ignore[arg-type]
+            receivers=probe_receivers,  # type: ignore[arg-type]
             globals=graphs.globals,
             n_node=n_node_total,
             n_edge=n_edges,
@@ -391,7 +387,7 @@ class JraphDataLoader:
 
     def random_idxs(self, array):
         if self.sample_probabilities_path is None:
-            idxs = torch.randint(
+            idxs = torch.randint(  # type: ignore[call-overload]
                 low=0,
                 high=array.shape[1],  # shape[1] is the indexes, shape[0] is batch_size
                 size=(self.idxs_per_sample,),
@@ -400,7 +396,7 @@ class JraphDataLoader:
         else:
             idxs = torch.multinomial(
                 self.sample_probabilities,
-                num_samples=self.idxs_per_sample,
+                num_samples=self.idxs_per_sample,  # type: ignore[arg-type]
                 replacement=False,
                 generator=self.random_generator,
             )
@@ -423,7 +419,7 @@ class JraphDataLoader:
         if self.add_pos_to_edges:
             # find the position of receivers, receivers because the edge_attr is the position of the sender from the reciever
             receiver_pos = pyg_batch.pos[pyg_batch.edge_index[0, :]]
-            edge_features = torch.cat([edge_features, receiver_pos], dim=1)
+            edge_features = torch.cat([edge_features, receiver_pos], dim=1)  # type: ignore[call-overload]
 
         # Extract graph-level features if available
         graph_features = (
@@ -442,13 +438,9 @@ class JraphDataLoader:
         # Convert to jax.numpy arrays
         node_features = jnp.array(node_features.numpy())
         edge_indices = jnp.array(edge_indices.numpy())
-        edge_features = (
-            jnp.array(edge_features.numpy()) if edge_features is not None else None
-        )
+        edge_features = jnp.array(edge_features.numpy()) if edge_features is not None else None
 
-        graph_features = (
-            jnp.array(graph_features.numpy()) if graph_features is not None else None
-        )
+        graph_features = jnp.array(graph_features.numpy()) if graph_features is not None else None
         n_node = jnp.array(n_node.numpy())
         n_edge = jnp.array(n_edge)
 
@@ -460,7 +452,6 @@ class JraphDataLoader:
         # Create jraph.GraphsTuple
 
         if self.graphs_only:
-
             jraph_graph = jraph.GraphsTuple(
                 nodes=node_features[..., feature_index],
                 edges=edge_features,
@@ -481,7 +472,7 @@ class JraphDataLoader:
                 else:
                     raise ValueError("idxs_per_sample must be set for random sampling")
 
-            elif self.trunk_sample_strategy == None:
+            elif self.trunk_sample_strategy is None:
                 idxs = np.arange(trunk_inputs.shape[1])
             elif self.trunk_sample_strategy == "take_all":
                 idxs = slice(None)
@@ -498,12 +489,8 @@ class JraphDataLoader:
             trunk_inputs = trunk_inputs[:, idxs, ...]
             output_features = output_features[:, idxs, ...]
 
-            trunk_inputs = jnp.array(
-                trunk_inputs[:, :: self.sample_stepsize, ...].numpy()
-            )
-            output_features = jnp.array(
-                output_features[:, :: self.sample_stepsize, ...].numpy()
-            )
+            trunk_inputs = jnp.array(trunk_inputs[:, :: self.sample_stepsize, ...].numpy())
+            output_features = jnp.array(output_features[:, :: self.sample_stepsize, ...].numpy())
             if self.probe_graphs:
                 jraph_graph = jraph.GraphsTuple(
                     nodes=node_features,
@@ -559,7 +546,7 @@ def pad_array(array: np.ndarray, n_graph: int) -> np.ndarray:
 
 def pad_trunk_and_output(
     trunk_input: np.ndarray, output_features: np.ndarray, n_graph: int
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Pad the trunk_and_output array with zeros to match the number of graphs."""
     missing_graphs = n_graph - trunk_input.shape[0]
     if missing_graphs > 0:
@@ -571,9 +558,7 @@ def pad_trunk_and_output(
         )
         trunk_input = np.concatenate([trunk_input, padding_trunk], axis=0)
         output_features = np.concatenate([output_features, padding_output], axis=0)
-        logger.debug(
-            f"trunk shape: {trunk_input.shape}\t, output: {output_features.shape}"
-        )
+        logger.debug(f"trunk shape: {trunk_input.shape}\t, output: {output_features.shape}")
     return trunk_input, output_features
 
 
@@ -588,7 +573,11 @@ def pad_probe_targets_all_nodes_version(probe_targets, n_node_probes):
 
 
 def atleast_2d_last(arr):
-    arr = np.asarray(arr)  # Ensure it's a NumPy array
+    # Convert JAX arrays to numpy first to avoid py_wake's monkey-patched np.asarray
+    if hasattr(arr, "__jax_array__") or type(arr).__module__.startswith("jax"):
+        arr = np.array(arr)
+    else:
+        arr = np.asarray(arr)  # Ensure it's a NumPy array
     if arr.ndim == 0:  # Scalar case
         return arr.reshape(1, 1)
     elif arr.ndim == 1:  # 1D case
@@ -600,16 +589,14 @@ def atleast_2d_last(arr):
 
 def dynamically_batch_graph_probe_operator(
     graph_operator_tuple_iterator: Iterator[
-        Tuple[gn_graph.GraphsTuple, gn_graph.GraphsTuple, jnp.ndarray]
+        tuple[gn_graph.GraphsTuple, gn_graph.GraphsTuple, jnp.ndarray]
     ],
     n_node: int,
     n_edge: int,
     n_graph: int,
     n_probes: int,
     return_layout_info: bool = False,
-) -> Generator[
-    Tuple[gn_graph.GraphsTuple, gn_graph.GraphsTuple, jnp.ndarray], None, None
-]:
+) -> Generator[tuple[gn_graph.GraphsTuple, gn_graph.GraphsTuple, jnp.ndarray], None, None]:
     """Dynamically batches trees with (`jraph.GraphsTuples`, `gn_graph.GraphsTuple`, `jnp.ndarray`) up to specified sizes. The function is based on the original `jraph._src.utils.dynamically_batch` function."""
 
     def append_to_array_tuple(array_tuple_1, array_tuple_2):
@@ -629,7 +616,7 @@ def dynamically_batch_graph_probe_operator(
 
         array_tuple_2d = tuple(map(atleast_2d_last, array_tuple))
         padding_zeros_tuple = tuple(
-            map(lambda arr_comp: np.zeros((n_pad, arr_comp.shape[-1])), array_tuple_2d)
+            np.zeros((n_pad, arr_comp.shape[-1])) for arr_comp in array_tuple_2d
         )
         array_tuple_padded = append_to_array_tuple(array_tuple_2d, padding_zeros_tuple)
         # array_tuple_padded = tuple(
@@ -640,9 +627,7 @@ def dynamically_batch_graph_probe_operator(
     def batch_and_pad_array_tuple(array_tuple_list, n_pad):
         combined_array_tuple = array_tuple_list[0]
         for array_tuple in array_tuple_list[1:]:
-            combined_array_tuple = append_to_array_tuple(
-                combined_array_tuple, array_tuple
-            )
+            combined_array_tuple = append_to_array_tuple(combined_array_tuple, array_tuple)
         return pad_array_tuple(combined_array_tuple, n_pad)
 
     if n_graph < 2:
@@ -676,9 +661,7 @@ def dynamically_batch_graph_probe_operator(
             graph_element, probe_graphs, array_tuple = data_tuple
         else:
             assert n_graph == 2, "When returning layout info, n_graph must be 2"
-            (graph_element, probe_graphs, array_tuple), layout_type, wt_spacing = (
-                data_tuple
-            )
+            (graph_element, probe_graphs, array_tuple), layout_type, wt_spacing = data_tuple  # type: ignore[assignment]
 
         graph_element_nodes, graph_element_edges, graph_element_graphs = (
             jraph_utils._get_graph_size(graph_element)
@@ -690,18 +673,14 @@ def dynamically_batch_graph_probe_operator(
 
                 if not return_layout_info:
                     yield (
-                        jraph_utils.pad_with_graphs(
-                            batched_graph, n_node, n_edge, n_graph
-                        ),
+                        jraph_utils.pad_with_graphs(batched_graph, n_node, n_edge, n_graph),
                         n_node,
                         n_edge,
                         n_graph,
                     )
                 else:
                     yield (
-                        jraph_utils.pad_with_graphs(
-                            batched_graph, n_node, n_edge, n_graph
-                        ),
+                        jraph_utils.pad_with_graphs(batched_graph, n_node, n_edge, n_graph),
                         n_node,
                         n_edge,
                         n_graph,
@@ -711,10 +690,8 @@ def dynamically_batch_graph_probe_operator(
 
             # Then report the error.
             graph_size = graph_element_nodes, graph_element_edges, graph_element_graphs
-            graph_size = {k: v for k, v in zip(jraph_utils._NUMBER_FIELDS, graph_size)}
-            batch_size = {
-                k: v for k, v in zip(jraph_utils._NUMBER_FIELDS, valid_batch_size)
-            }
+            graph_size = dict(zip(jraph_utils._NUMBER_FIELDS, graph_size))
+            batch_size = dict(zip(jraph_utils._NUMBER_FIELDS, valid_batch_size))
             raise RuntimeError(
                 "Found graph bigger than batch size. Valid Batch "
                 f"Size: {batch_size}, Graph Size: {graph_size}"
@@ -747,9 +724,7 @@ def dynamically_batch_graph_probe_operator(
 
                 if not return_layout_info:
                     yield (
-                        jraph_utils.pad_with_graphs(
-                            batched_graph, n_node, n_edge, n_graph
-                        ),
+                        jraph_utils.pad_with_graphs(batched_graph, n_node, n_edge, n_graph),
                         jraph_utils.pad_with_graphs(
                             batched_probe_graphs,
                             n_node_probes,
@@ -761,9 +736,7 @@ def dynamically_batch_graph_probe_operator(
                     )
                 else:
                     yield (
-                        jraph_utils.pad_with_graphs(
-                            batched_graph, n_node, n_edge, n_graph
-                        ),
+                        jraph_utils.pad_with_graphs(batched_graph, n_node, n_edge, n_graph),
                         jraph_utils.pad_with_graphs(
                             batched_probe_graphs,
                             n_node_probes,
@@ -838,7 +811,7 @@ def dynamically_batch_graph_probe_operator(
 if __name__ == "__main__":
     import sys
 
-    from graph import print_shapes
+    from graph import print_shapes  # type: ignore[import-untyped]
     from matplotlib import pyplot as plt
 
     sys.path.append(os.path.abspath("../"))
@@ -849,9 +822,7 @@ if __name__ == "__main__":
     # data_path = os.path.abspath("./data/medium_graphs_nodes/train_pre_processed")
     dataset = Torch_Geomtric_Dataset(data_path)
 
-    batch_size = (
-        1  #! Plot looks bestwith single graph otherwise nodes are tangled toghether
-    )
+    batch_size = 1  #! Plot looks bestwith single graph otherwise nodes are tangled toghether
 
     stats, scale_stats = retrieve_dataset_stats(
         dataset,
@@ -920,15 +891,17 @@ if __name__ == "__main__":
     n_node = max_graph * 0.7
     n_edge = max_graph * 0.6
 
-    dynamic_batcher = dynamically_batch_graph_operator(
-        loader, n_node=1000, n_edge=3000, n_graph=max_graph
-    )
-
-    for graphs, trunk_input, trunk_output in dynamic_batcher:
-        print_shapes(graphs)
-        print(trunk_input.shape)
-        print(trunk_output.shape)
-        break
+    # NOTE: dynamically_batch_graph_operator does not exist
+    # Use dynamically_batch_graph_probe_operator instead with n_probes parameter
+    # dynamic_batcher = dynamically_batch_graph_probe_operator(
+    #     loader, n_node=1000, n_edge=3000, n_graph=max_graph, n_probes=2
+    # )
+    #
+    # for graphs, trunk_input, trunk_output in dynamic_batcher:
+    #     print_shapes(graphs)
+    #     print(trunk_input.shape)
+    #     print(trunk_output.shape)
+    #     break
 
     n_probes = 2
     loader = JraphDataLoader(
@@ -945,7 +918,7 @@ if __name__ == "__main__":
         ],  # See function utils.data_tools.get_node_feature_idxs for explanation
     )
 
-    for i, (graphs, probe_graphs, node_tuple_array) in enumerate(loader):
+    for graphs, probe_graphs, node_tuple_array in loader:
         probe_targets, wt_node_mask, probe_node_mask = node_tuple_array
         print_shapes(graphs)
         print_shapes(probe_graphs)
@@ -953,31 +926,25 @@ if __name__ == "__main__":
         break
 
     dynamic_batcher = dynamically_batch_graph_probe_operator(
-        loader, n_node=200, n_edge=500, n_graph=5, n_probes=n_probes
+        iter(loader), n_node=200, n_edge=500, n_graph=5, n_probes=n_probes
     )
 
     for padded_graphs, padded_probe_graphs, padded_node_tuple_array in dynamic_batcher:
-        padded_probe_targets, padded_wt_node_mask, padded_probe_node_mask = (
-            padded_node_tuple_array
-        )
+        padded_probe_targets, padded_wt_node_mask, padded_probe_node_mask = padded_node_tuple_array
         print_shapes(padded_graphs)
         print_shapes(padded_probe_graphs)
         print(padded_probe_targets.shape)
         break
 
     def get_wt_and_probe_idxs(graphs, probe_graphs):
-        unique_wt_senders_receivers = np.unique(
-            np.concat([graphs.senders, graphs.receivers])
-        )
+        unique_wt_senders_receivers = np.unique(np.concat([graphs.senders, graphs.receivers]))
         unique_probe_receivers = np.unique(probe_graphs.receivers)
         return unique_wt_senders_receivers, unique_probe_receivers
 
     unique_wt_senders_receivers, unique_probe_receivers = get_wt_and_probe_idxs(
         padded_graphs, padded_probe_graphs
     )
-    overlapping_values = np.intersect1d(
-        unique_wt_senders_receivers, unique_probe_receivers
-    )
+    overlapping_values = np.intersect1d(unique_wt_senders_receivers, unique_probe_receivers)
     print(overlapping_values)  # Should only be the padded node
     print(unique_wt_senders_receivers)
     print(unique_probe_receivers)
@@ -1009,9 +976,7 @@ if __name__ == "__main__":
     unique_wt_senders_receivers, unique_probe_receivers = get_wt_and_probe_idxs(
         graphs, probe_graphs
     )
-    overlapping_values = np.intersect1d(
-        unique_wt_senders_receivers, unique_probe_receivers
-    )
+    overlapping_values = np.intersect1d(unique_wt_senders_receivers, unique_probe_receivers)
     print(overlapping_values)  # Should only be the padded node
     print(unique_wt_senders_receivers)
     print(unique_probe_receivers)

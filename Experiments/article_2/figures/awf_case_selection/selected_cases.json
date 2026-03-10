@@ -1,0 +1,96 @@
+{
+  "description": "Selected AWF test cases for Article 2",
+  "n_cases": 9,
+  "cases": [
+    {
+      "size_category": "small",
+      "inflow_target": "low_ws_low_ti",
+      "dataset_idx": 105,
+      "netcdf_layout_idx": 212,
+      "netcdf_flowcase_idx": 1,
+      "n_wt": 24,
+      "ws_inf": 8.35,
+      "ti_inf": 0.0702
+    },
+    {
+      "size_category": "small",
+      "inflow_target": "med_ws_med_ti",
+      "dataset_idx": 151,
+      "netcdf_layout_idx": 45,
+      "netcdf_flowcase_idx": 3,
+      "n_wt": 29,
+      "ws_inf": 12.05,
+      "ti_inf": 0.1241
+    },
+    {
+      "size_category": "small",
+      "inflow_target": "high_ws_high_ti",
+      "dataset_idx": 72,
+      "netcdf_layout_idx": 169,
+      "netcdf_flowcase_idx": 0,
+      "n_wt": 36,
+      "ws_inf": 21.27,
+      "ti_inf": 0.2154
+    },
+    {
+      "size_category": "medium",
+      "inflow_target": "low_ws_low_ti",
+      "dataset_idx": 3,
+      "netcdf_layout_idx": 0,
+      "netcdf_flowcase_idx": 3,
+      "n_wt": 74,
+      "ws_inf": 9.07,
+      "ti_inf": 0.0603
+    },
+    {
+      "size_category": "medium",
+      "inflow_target": "med_ws_med_ti",
+      "dataset_idx": 146,
+      "netcdf_layout_idx": 38,
+      "netcdf_flowcase_idx": 2,
+      "n_wt": 61,
+      "ws_inf": 11.58,
+      "ti_inf": 0.147
+    },
+    {
+      "size_category": "medium",
+      "inflow_target": "high_ws_high_ti",
+      "dataset_idx": 26,
+      "netcdf_layout_idx": 125,
+      "netcdf_flowcase_idx": 2,
+      "n_wt": 56,
+      "ws_inf": 20.89,
+      "ti_inf": 0.2387
+    },
+    {
+      "size_category": "large",
+      "inflow_target": "low_ws_low_ti",
+      "dataset_idx": 11,
+      "netcdf_layout_idx": 107,
+      "netcdf_flowcase_idx": 3,
+      "n_wt": 127,
+      "ws_inf": 8.0,
+      "ti_inf": 0.0706
+    },
+    {
+      "size_category": "large",
+      "inflow_target": "med_ws_med_ti",
+      "dataset_idx": 40,
+      "netcdf_layout_idx": 137,
+      "netcdf_flowcase_idx": 0,
+      "n_wt": 120,
+      "ws_inf": 10.91,
+      "ti_inf": 0.1538
+    },
+    {
+      "size_category": "large",
+      "inflow_target": "high_ws_high_ti",
+      "dataset_idx": 61,
+      "netcdf_layout_idx": 161,
+      "netcdf_flowcase_idx": 1,
+      "n_wt": 122,
+      "ws_inf": 19.75,
+      "ti_inf": 0.2472
+    }
+  ]
+}

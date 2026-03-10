@@ -21,7 +21,7 @@ hydra:
     params:
       +optimizer/batching: GNO_probe2
       +optimizer/lr_schedule: piecewise_constant_GNO_large, piecewise_constant_GNO_large2
-      +model: WindfarmGNO_probe_wider_v1, WindfarmGNO_probe_wider_v2, WindfarmGNO_probe_wider_v3
+      +model: WindfarmGNO_probe_S1_global, WindfarmGNO_probe_L1_global, WindfarmGNO_probe_best_vj8_global
       +model/regularization: dropout_layernorm
       +model/RBF_dist_encoder: gaussian_cosine_cutoff
 
@@ -34,4 +34,3 @@ hydra:
       time: "72:00:00"
       nodes: 1
       partition: fatq
-

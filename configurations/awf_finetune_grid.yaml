@@ -1,0 +1,101 @@
+# AWF Fine-tuning Grid Search Configuration
+# Tests fine-tuning techniques on AWF test dataset
+#
+# Grid Design (4 jobs):
+#   - 2 LoRA jobs: rank8 × 2 freezing strategies
+#
+# REQUIRED: Set pretrained_checkpoint_path to best Turbopark checkpoint before running
+#
+# Usage:
+#   1. First run Turbopark pretraining grid
+#   2. Identify best checkpoint from WandB/logs
+#   3. Set pretrained_checkpoint_path below
+#   4. python train_GNO_probe.py --config-name awf_finetune_grid
+#
+# Or override checkpoint path from CLI:
+#   python train_GNO_probe.py --config-name awf_finetune_grid \
+#     pretrained_checkpoint_path=./outputs/turbopark_pretrain_grid/.../model/checkpoints/25
+
+defaults:
+  - _self_
+  - data: awf_test  # AWF test dataset
+  - data/io: GNO_probe
+  - optimizer: finetune_adam  # Lower epochs (50 vs 3000)
+  - optimizer/batching: GNO_probe_test
+  - optimizer/validation: GNN
+  - optimizer/lr_schedule: finetune_constant  # Lower LR (5e-5 vs 1e-3)
+  - model: WindfarmGNO_probe_best_vj8  # Placeholder - will be auto-loaded from pretrained checkpoint
+  - model/regularization: dropout_layernorm  # Placeholder - will be auto-loaded from pretrained checkpoint
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff  # Placeholder - will be auto-loaded from pretrained checkpoint
+  # Fine-tuning techniques (will be overridden by sweep - using override instead of +)
+  - finetuning/lora: disabled
+  - finetuning/freezing: embedder_only
+  - finetuning/gradient_clipping: clip_1.0     # Fixed: standard clipping
+  - finetuning/representation_consistency: disabled  # Not yet implemented
+  - override hydra/launcher: basic  # Local execution (sequential)
+
+finetuning:
+  enabled: true  # Enable fine-tuning mode
+
+wandb:
+  use: False  # Set to True for WandB logging
+  project: GNO_awf_finetune_grid
+
+# Local output directory
+output_base_dir: ./outputs/awf_finetune_grid
+
+# REQUIRED: Path to pretrained Turbopark checkpoint
+# Update this path after running turbopark_pretrain_grid
+pretrained_checkpoint_path: ./outputs/turbopark_pretrain_grid/multirun/YYYY-MM-DD/HH-MM-SS/1/model/final_e_9
+
+hydra:
+  run:
+    dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${output_base_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
+  mode: MULTIRUN
+  sweeper:
+    params:
+      # 2-job design for testing: 1 LoRA variant × 2 freezing strategies = 2 jobs
+      # LoRA sweep (1 variant) - overrides default
+      finetuning/lora: rank8
+      # Freezing sweep (2 variants) - overrides default
+      finetuning/freezing: embedder_only,decoder_only_trainable
+
+  # launcher config not needed for basic launcher (runs sequentially)
+
+# # Sophia cluster configuration (commented out for local use)
+# # Uncomment and adjust paths to run on Sophia cluster
+# #
+# # output_base_dir: /work/users/jpsch/SPO_sophia_dir/outputs/awf_finetune_grid
+# #
+# # # REQUIRED: Path to pretrained Turbopark checkpoint on Sophia
+# # pretrained_checkpoint_path: /work/users/jpsch/SPO_sophia_dir/outputs/turbopark_pretrain_grid/multirun/2026-01-06/13-33-41/1/model/final_e_9
+# #
+# # hydra:
+# #   run:
+# #     dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}
+# #   sweep:
+# #     dir: ${output_base_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+# #     subdir: ${hydra.job.num}
+# #   mode: MULTIRUN
+# #   sweeper:
+# #     params:
+# #       # 2-job design for testing: 1 LoRA variant × 2 freezing strategies = 2 jobs
+# #       # LoRA sweep (1 variant) - overrides default
+# #       finetuning/lora: rank8
+# #       # Freezing sweep (2 variants) - overrides default
+# #       finetuning/freezing: embedder_only,decoder_only_trainable
+# #
+# #   launcher:
+# #     _target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
+# #     array_parallelism: 2  # Max 2 parallel SLURM jobs
+# #     additional_parameters:
+# #       partition: fatq,gpuq  # GPU partitions (automatically allocate GPU)
+# #       exclusive: True       # Exclusive node access
+# #       time: "12:00:00"      # 12 hour wall time
+# #     setup:
+# #       # Activate pixi cluster environment (compatible with old CentOS + CUDA 12)
+# #       - export PIXI_PROJECT_ROOT=/work/users/jpsch/SPO_sophia_dir/gno
+# #       - eval "$(pixi shell-hook -e cluster)"

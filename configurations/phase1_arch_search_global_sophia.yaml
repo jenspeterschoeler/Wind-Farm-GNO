@@ -1,0 +1,52 @@
+# Phase 1 Global: Architecture Search with Global Context - Sophia Cluster
+# Re-run Phase 1 with global conditioning enabled via v2 model class
+#
+# Grid Design (14 experiments):
+#   - 7 architectures (Vj8, S1-S3, L1-L3) × dropout_layernorm (init_lr=0.005)
+#   - 7 architectures (Vj8, S1-S3, L1-L3) × lr001 (init_lr=0.001)
+#
+# Usage (from windq):
+#   cd /work/users/jpsch/gno
+#   sbatch scripts/sophia_phase1_global.sh
+#
+# Or manually:
+#   export PIXI_PROJECT_ROOT=/work/users/jpsch/gno
+#   eval "$(pixi shell-hook -e cluster)"
+#   python main.py --config-name phase1_arch_search_global_sophia
+
+defaults:
+  - _self_
+  - data: turbopark_2500layouts
+  - data/io: GNO_probe
+  - optimizer: adam
+  - optimizer/batching: GNO_probe
+  - optimizer/validation: GNN
+  - optimizer/lr_schedule: piecewise_constant_phase1
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff
+  - override hydra/launcher: submitit_slurm
+
+wandb:
+  use: True
+  project: GNO_phase1_arch_search_global
+
+output_base_dir: /work/users/jpsch/gno/outputs/transfer_learning/phase1_global
+
+hydra:
+  run:
+    dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${output_base_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}_${hydra.job.override_dirname}
+  mode: MULTIRUN
+  sweeper:
+    params:
+      # 14 experiments: 7 architectures × 2 LR rates (0.005 and 0.001)
+      +experiment: phase1_global/vj8_dropout_layernorm,phase1_global/S1_dropout_layernorm,phase1_global/S2_dropout_layernorm,phase1_global/S3_dropout_layernorm,phase1_global/L1_dropout_layernorm,phase1_global/L2_dropout_layernorm,phase1_global/L3_dropout_layernorm,phase1_global/vj8_lr001,phase1_global/S1_lr001,phase1_global/S2_lr001,phase1_global/S3_lr001,phase1_global/L1_lr001,phase1_global/L2_lr001,phase1_global/L3_lr001
+
+  launcher:
+    array_parallelism: 8
+    additional_parameters:
+      exclusive: True
+      time: "72:00:00"
+      nodes: 1
+      partition: fatq

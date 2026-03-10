@@ -1,0 +1,7 @@
+# Learning rate schedule from best_model_Vj8
+# Fast decay for rapid initial convergence
+
+type: "piecewise_constant"
+init_learning_rate: 0.005
+boundaries: [75, 150]  # Early boundaries for fast decay
+scales: [0.1, 0.1]     # Decay to 0.0005 at epoch 75, then 0.00005 at epoch 150

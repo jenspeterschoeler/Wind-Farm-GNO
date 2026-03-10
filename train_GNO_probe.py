@@ -1,46 +1,49 @@
+"""Training pipeline for the GNO wind farm flow prediction model."""
+
 import logging
 import os
-import pickle
-import sys
 import warnings
-from copy import deepcopy
-from typing import Tuple
+
+# Configure JAX backend BEFORE importing JAX
+# "cuda,cpu" means: try CUDA first, fall back to CPU if unavailable
+os.environ.setdefault("JAX_PLATFORMS", "cuda,cpu")
 
 import jax
 
-if any(d.platform == "gpu" for d in jax.devices()):
-    print("GPU available")
-    os.environ["JAX_PLATFORMS"] = "gpu"
+# Log which platform was actually selected
+_gpu_available = any(d.platform == "gpu" for d in jax.devices())
+if _gpu_available:
+    print(f"GPU available: {jax.devices()}")
 else:
-    print("CPU only")
-    os.environ["JAX_PLATFORMS"] = "cpu"
+    print(f"CPU only: {jax.devices()}")
 
-import jax.numpy as jnp
-import jraph
-import numpy as np
-import orbax.checkpoint as ocp
-import torch
-from flax.training.early_stopping import EarlyStopping
-from flax.training.train_state import TrainState
-from matplotlib import pyplot as plt
-from omegaconf import DictConfig, OmegaConf
-from tqdm import tqdm
+import torch  # noqa: E402
+from matplotlib import pyplot as plt  # noqa: E402
+from omegaconf import DictConfig, OmegaConf  # noqa: E402
+from tqdm import tqdm  # noqa: E402
 
-import wandb
-from utils import (
-    add_to_hydra_cfg,
-    convert_to_wandb_format,
-    dynamically_batch_graph_probe_operator,
-    setup_optimizer,
+import wandb  # noqa: E402
+from utils import add_to_hydra_cfg  # noqa: E402
+from utils.training_utils import (  # noqa: E402
+    compute_hybrid_metric,
+    create_prediction_fn,
+    create_train_step_fn,
+    create_val_errors_fn,
+    create_wandb_plot,
+    initialize_model_and_params,
+    load_plot_components,
+    load_resume_checkpoint,
+    log_model_parameters,
+    restore_early_stop_state,
+    run_training_epoch,
+    run_validation,
+    save_final_model,
+    save_resume_checkpoint_multi_metric,
+    setup_checkpointing,
+    setup_data_loaders,
+    setup_multi_metric_checkpointing,
+    setup_training_components,
 )
-from utils.data_tools import (
-    setup_refresh_iterator,
-    setup_test_val_iterator,
-    setup_train_dataset,
-)
-from utils.GNO_probe import initialize_GNO_probe, inverse_scale_rel_ws, scale_rel_ws
-from utils.model_tools import model_parameter_stats, setup_model
-from utils.plotting import plot_crossstream_predictions, plot_probe_graph_fn
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -51,236 +54,58 @@ torch.multiprocessing.set_sharing_strategy("file_system")
 logger = logging.getLogger(__name__)
 
 
-def train_GNO_probe(cfg: DictConfig, wandb_run=None) -> None:
+def train_GNO_probe(cfg: DictConfig, wandb_run=None, pretrained_checkpoint_path=None) -> DictConfig:
+    """
+    Train GNO probe model.
 
-    #### Load the dataset
-    train_dataset, cfg = setup_train_dataset(cfg)
-    get_refreshed_train_fn, unpadded_train_iterator = setup_refresh_iterator(
-        cfg, train_dataset
-    )
-    get_refreshed_val_fn, val_dataset, _, _ = setup_test_val_iterator(
-        cfg, type_str="val"
-    )
+    Args:
+        cfg: Configuration object
+        wandb_run: Optional W&B run for logging
+        pretrained_checkpoint_path: Optional path to pretrained checkpoint for transfer learning
+    """
+    # Setup data loaders
+    train_dataset, get_refreshed_train_fn, get_refreshed_val_fn, cfg = setup_data_loaders(cfg)
 
-    #### Create a data iterator
-    train_iterator = get_refreshed_train_fn()
-
-    # Get the first batch for initialization
-    graphs, probe_graphs, node_array_tuple = next(train_iterator)
-    targets, wt_mask, probe_mask = node_array_tuple
-
-    cfg.model = add_to_hydra_cfg(
-        cfg.model,
-        "output_shape",
-        targets.shape[-1],
-    )
-    model = setup_model(cfg)
-
-    rng_key = jax.random.PRNGKey(0)
-    params, dropout_active = initialize_GNO_probe(
-        cfg,
-        model,
-        rng_key,
-        graphs,
-        probe_graphs,
-        wt_mask,
-        probe_mask,
+    # Initialize model and parameters (with optional pretrained weights)
+    first_batch = next(get_refreshed_train_fn())
+    model, params, dropout_active, rng_key, cfg = initialize_model_and_params(
+        cfg, first_batch, pretrained_checkpoint_path=pretrained_checkpoint_path
     )
 
-    params_stats = model_parameter_stats(params)
-    logger.info(f"Total parameters: {params_stats['total_params']}")
-    if wandb_run is not None:
-        wandb_params_stats = convert_to_wandb_format(params_stats)
-        for dict_key, value in wandb_params_stats.items():
-            wandb.summary[f"params/{dict_key}"] = value
+    # Store pretrained params for fine-tuning (deep copy)
+    pretrained_params = None
+    if pretrained_checkpoint_path is not None:
+        import copy
 
-    # Create an optimizer
-    optimizer = setup_optimizer(cfg)
-    if "early_stop" in cfg.optimizer:
-        early_stop = EarlyStopping(
-            min_delta=cfg.optimizer.early_stop.criteria,
-            patience=int(
-                cfg.optimizer.early_stop.patience
-                / cfg.optimizer.validation.rate_of_validation
-            ),
-        )
+        pretrained_params = copy.deepcopy(params)
+        logger.info("Pretrained params stored for fine-tuning")
 
-    # Create a train step function
-    if dropout_active:
-        train_state = TrainState.create(
-            apply_fn=lambda params, graphs, probe_graphs, wt_mask, probe_mask, rngs: model.apply(
-                params,
-                graphs,
-                probe_graphs,
-                wt_mask,
-                probe_mask,
-                train=True,
-                rngs=rngs,
-            ),
-            params=params,
-            tx=optimizer,
-        )
-    else:
-        train_state = TrainState.create(
-            apply_fn=lambda params, graphs, probe_graphs, wt_mask, probe_mask: model.apply(
-                params,
-                graphs,
-                probe_graphs,
-                wt_mask,
-                probe_mask,
-                train=True,
-            ),
-            params=params,
-            tx=optimizer,
-        )
-    prediction_fn = jax.jit(
-        lambda params, graphs, probe_graphs, wt_mask, probe_mask: model.apply(
-            params,
-            graphs,
-            probe_graphs,
-            wt_mask,
-            probe_mask,
-            train=False,
-        )
+    # Note: LoRA is now configured directly in model via use_lora_embedder/processor/decoder
+    # parameters in the config (see utils/model_tools.py)
+
+    # Log model parameters
+    log_model_parameters(params, wandb_run)
+
+    # Setup training components (pass pretrained_params for fine-tuning)
+    train_state, optimizer, early_stop = setup_training_components(
+        cfg, model, params, dropout_active, pretrained_params=pretrained_params
     )
 
-    @jax.jit
-    def train_step_fn(
-        train_state: TrainState,
-        graphs: jraph.GraphsTuple,
-        probe_graphs: jraph.GraphsTuple,
-        wt_mask: jnp.ndarray,
-        probe_mask: jnp.ndarray,
-        targets: jnp.ndarray,
-        rngs: dict = None,
-    ) -> TrainState:
+    # Create JIT-compiled functions
+    prediction_fn = create_prediction_fn(model)
+    train_step_fn = create_train_step_fn(cfg, dropout_active)
+    val_errors_fn = create_val_errors_fn(cfg, prediction_fn)
 
-        if cfg.model.scale_rel_ws:
-            combined_mask = wt_mask + probe_mask
-            targets = scale_rel_ws(graphs, targets, combined_mask)
+    # Load plot components for visualization (from pickle or validation data)
+    plot_components = load_plot_components(cfg, get_refreshed_val_fn)
 
-        if dropout_active:
-
-            def loss_fn(params):
-                prediction = train_state.apply_fn(
-                    params,
-                    graphs,
-                    probe_graphs,
-                    wt_mask,
-                    probe_mask,
-                    rngs=rngs,
-                )
-                loss = jnp.mean((targets - prediction) ** 2)
-                return loss, prediction
-
-        else:
-
-            def loss_fn(params):
-                prediction = train_state.apply_fn(
-                    params,
-                    graphs,
-                    probe_graphs,
-                    wt_mask,
-                    probe_mask,
-                )
-                loss = jnp.mean((targets - prediction) ** 2)
-                return loss, prediction
-
-        grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-        (loss, prediction), grads = grad_fn(train_state.params)
-
-        if cfg.model.scale_rel_ws:
-            prediction = inverse_scale_rel_ws(graphs, prediction, combined_mask)
-
-        new_train_state = train_state.apply_gradients(grads=grads)
-        return loss, new_train_state, prediction
-
-    ## Create a prediction method to be used in the validation loop
-    @jax.jit
-    def val_errors_fn(
-        train_state: TrainState,
-        graphs: jraph.GraphsTuple,
-        probe_graphs: jraph.GraphsTuple,
-        wt_mask,
-        probe_mask,
-        targets: jnp.ndarray,
-    ) -> Tuple[float, float, int]:
-        """This function assumes the graphs are padded"""
-        predictions = prediction_fn(
-            train_state.params,
-            graphs,
-            probe_graphs,
-            wt_mask,
-            probe_mask,
-        )
-        if cfg.model.scale_rel_ws:
-            combined_mask = wt_mask + probe_mask
-            predictions_scaled_rel_ws = predictions
-            targets_scaled_rel_ws = scale_rel_ws(graphs, targets, combined_mask)
-            errors_scaled_rel_ws = targets_scaled_rel_ws - predictions_scaled_rel_ws
-            sq_errors_scaled_rel_ws = errors_scaled_rel_ws**2
-            abs_errors_scaled_rel_ws = jnp.abs(errors_scaled_rel_ws)
-            predictions = inverse_scale_rel_ws(graphs, predictions, combined_mask)
-
-        errors = targets - predictions
-        sq_errors = errors**2
-        abs_errors = jnp.abs(errors)
-
-        # Calculating the samples is based on the padding mask implemented in DeepOGraphNet see model for explanation
-        n_samples = jnp.sum(wt_mask) + jnp.sum(probe_mask)
-        # proto_mask = jnp.sum(jnp.abs(probe_graphs.nodes), axis=-1)
-        # proto_mask = proto_mask + jnp.sum(proto_mask, axis=-1).reshape(-1, 1)
-        # n_samples = jnp.sum(jnp.bool(proto_mask))
-        if cfg.model.scale_rel_ws:
-            return (
-                jnp.sum(errors_scaled_rel_ws),
-                jnp.sum(sq_errors_scaled_rel_ws),
-                jnp.sum(abs_errors_scaled_rel_ws),
-                jnp.sum(errors),
-                jnp.sum(sq_errors),
-                jnp.sum(abs_errors),
-                n_samples,
-            )
-        else:
-            return (
-                jnp.sum(errors),
-                jnp.sum(sq_errors),
-                jnp.sum(abs_errors),
-                n_samples,
-            )
-
-    # Open the pickle file to check the contents
-    with open(os.path.join(cfg.data.main_path, "plot_graph_components.pkl"), "rb") as f:
-        loaded_components = pickle.load(f)
-    (
-        plot_jraph_graph,
-        plot_probe_graph,
-        plot_node_positions,
-        plot_probe_targets,
-        plot_wt_mask,
-        plot_probe_mask,
-        plot_y_grid,
-    ) = loaded_components.values()
-    plot_probe_targets = (
-        plot_probe_targets * cfg.data.scale_stats["velocity"]["range"][0]
-    )
-    plot_U = np.array(
-        plot_jraph_graph.globals[0, 0].squeeze()
-        * cfg.data.scale_stats["velocity"]["range"][0]
-    )
-    plot_TI = np.array(
-        plot_jraph_graph.globals[0, 1].squeeze()
-        * cfg.data.scale_stats["ti"]["range"][0]
-    )
-
-    # ## Create a checkpoint manager for saving the best model
-    options = ocp.CheckpointManagerOptions(max_to_keep=2, create=True)
-    checkpoint_dir = os.path.join(cfg.model_save_path, "checkpoints")
-    orbax_checkpointer = ocp.PyTreeCheckpointer()
-    checkpoint_manager = ocp.CheckpointManager(
-        checkpoint_dir, orbax_checkpointer, options
-    )
-    best_metric = float("inf")  # Replace with -inf for metrics where higher is better
+    # Setup checkpointing (multi-metric: MSE, MAE, hybrid)
+    checkpoint_managers, orbax_checkpointer = setup_multi_metric_checkpointing(cfg)
+    best_mse = float("inf")
+    best_mae = float("inf")
+    best_hybrid = float("inf")
+    mse_baseline = None  # Set on first validation
+    mae_baseline = None
 
     logger.info("Running main loop.")
     # Run the training loop
@@ -289,243 +114,497 @@ def train_GNO_probe(cfg: DictConfig, wandb_run=None) -> None:
     val_epochs = []
     pbar = tqdm(total=cfg.optimizer.n_epochs)
     pbar.set_description("Training")
+
     for epoch in range(cfg.optimizer.n_epochs):
-        train_loss = 0
-        # Shuffle and restart the iterator
-        train_iterator = get_refreshed_train_fn()
-        for i, (graphs, probe_graphs, node_array_tuple) in enumerate(train_iterator):
-            targets, wt_mask, probe_mask = node_array_tuple
-
-            if dropout_active:
-                rng_key, params_key, dropout_key = jax.random.split(rng_key, 3)
-                batch_loss, train_state, predictions = train_step_fn(
-                    train_state,
-                    graphs,
-                    probe_graphs,
-                    wt_mask,
-                    probe_mask,
-                    targets,
-                    rngs={"params": params_key, "dropout": dropout_key},
-                )
-            else:
-                batch_loss, train_state, predictions = train_step_fn(
-                    train_state,
-                    graphs,
-                    probe_graphs,
-                    wt_mask,
-                    probe_mask,
-                    targets,
-                )
-            logger.debug(f"Prediction: {predictions}", f"\nTrue output: {targets}")
-            train_loss += batch_loss  # .item()
-
-        loss_hist.append(train_loss / (i + 1))
+        # Run training epoch
+        train_loss, train_state, rng_key = run_training_epoch(
+            train_state, get_refreshed_train_fn, train_step_fn, dropout_active, rng_key
+        )
+        loss_hist.append(train_loss)
         metrics = {"loss": loss_hist}
 
-        if cfg.wandb.use:
+        if cfg.wandb.use and wandb_run is not None:
             wandb_run.log({"train/loss": loss_hist[-1]}, step=epoch)
 
         # Validation loop
         if epoch % cfg.optimizer.validation.rate_of_validation == 0:
-            val_iterator = get_refreshed_val_fn()
+            # Run validation
+            val_metrics = run_validation(cfg, train_state, get_refreshed_val_fn, val_errors_fn)
 
-            errors = np.float64(0)
-            sq_errors = np.float64(0)
-            abs_errors = np.float64(0)
-            n_samples = np.int64(0)
-            if cfg.model.scale_rel_ws:
-                errors_scaled_rel_ws = np.float64(0)
-                sq_errors_scaled_rel_ws = np.float64(0)
-                abs_errors_scaled_rel_ws = np.float64(0)
-
-            for i, (graphs, probe_graphs, node_array_tuple) in enumerate(val_iterator):
-                targets, wt_mask, probe_mask = node_array_tuple
-
-                val_err_output = val_errors_fn(
-                    train_state,
-                    graphs,
-                    probe_graphs,
-                    wt_mask,
-                    probe_mask,
-                    targets,
-                )
-                if cfg.model.scale_rel_ws:
-                    (
-                        err_sum_scaled_rel_ws_,
-                        sq_err_sum_scaled_rel_ws_,
-                        abs_err_sum_scaled_rel_ws_,
-                        err_sum_,
-                        sq_err_sum_,
-                        abs_err_sum_,
-                        n_samples_,
-                    ) = val_err_output
-
-                    errors_scaled_rel_ws += np.float64(err_sum_scaled_rel_ws_)
-                    sq_errors_scaled_rel_ws += np.float64(sq_err_sum_scaled_rel_ws_)
-                    abs_errors_scaled_rel_ws += np.float64(abs_err_sum_scaled_rel_ws_)
-                else:
-                    (
-                        err_sum_,
-                        sq_err_sum_,
-                        abs_err_sum_,
-                        n_samples_,
-                    ) = val_err_output
-
-                errors += np.float64(err_sum_)
-                sq_errors += np.float64(sq_err_sum_)
-                abs_errors += np.float64(abs_err_sum_)
-                n_samples += np.int64(n_samples_)
-
-            metrics["val_mse"] = sq_errors / n_samples
-            metrics["val_mae"] = abs_errors / n_samples
-            metrics["val_RMSE"] = jnp.sqrt(metrics["val_mse"])
-            val_hist.append(metrics["val_mse"])
+            # Update metrics history
+            metrics.update(val_metrics)
+            val_hist.append(val_metrics["val_mse"])
             val_epochs.append(epoch)
             metrics["val_loss"] = val_hist
             metrics["val_epochs"] = val_epochs
 
+            # Determine validation metric for checkpointing
             if cfg.model.scale_rel_ws:
-                metrics["val_mse_scaled_rel_ws"] = sq_errors_scaled_rel_ws / n_samples
-                metrics["val_mae_scaled_rel_ws"] = abs_errors_scaled_rel_ws / n_samples
-                metrics["val_rmse_scaled_rel_ws"] = jnp.sqrt(
-                    metrics["val_mse_scaled_rel_ws"]
-                )
-                validation_metric = metrics["val_mse_scaled_rel_ws"]
+                validation_metric = val_metrics["val_mse_scaled_rel_ws"]
             else:
-                validation_metric = metrics["val_mse"]
+                validation_metric = val_metrics["val_mse"]
 
-            if cfg.wandb.use:
+            # W&B logging and plotting
+            if cfg.wandb.use and wandb_run is not None:
                 wandb_val_dict = {
-                    "val/loss(mse)": metrics["val_mse"],
-                    "val/mae": metrics["val_mae"],
-                    "val/rmse": metrics["val_RMSE"],
+                    "val/loss(mse)": val_metrics["val_mse"],
+                    "val/mae": val_metrics["val_mae"],
+                    "val/rmse": val_metrics["val_RMSE"],
                 }
                 if cfg.model.scale_rel_ws:
                     wandb_val_dict.update(
                         {
-                            "val/loss(mse)_scaled_rel_ws": metrics[
-                                "val_mse_scaled_rel_ws"
-                            ],
-                            "val/mae_scaled_rel_ws": metrics["val_mae_scaled_rel_ws"],
-                            "val/rmse_scaled_rel_ws": metrics["val_rmse_scaled_rel_ws"],
+                            "val/loss(mse)_scaled_rel_ws": val_metrics["val_mse_scaled_rel_ws"],
+                            "val/mae_scaled_rel_ws": val_metrics["val_mae_scaled_rel_ws"],
+                            "val/rmse_scaled_rel_ws": val_metrics["val_rmse_scaled_rel_ws"],
                         }
                     )
 
-                plot_probe_predictions = model.apply(
-                    train_state.params,
-                    plot_jraph_graph,
-                    plot_probe_graph,
-                    plot_wt_mask,
-                    plot_probe_mask,
-                    train=False,
-                )
-                # Remove non probe nodes from predictions
-                plot_probe_predictions = np.where(
-                    plot_probe_mask == 1, plot_probe_predictions, np.nan
-                )
-                plot_probe_predictions = plot_probe_predictions[
-                    ~np.isnan(plot_probe_predictions)
-                ]
-                plot_probe_predictions = (
-                    plot_probe_predictions
-                    * cfg.data.scale_stats["velocity"]["range"][0]
-                )
-                fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-                plot_probe_graph_fn(
-                    plot_jraph_graph,
-                    plot_probe_graph,
-                    plot_node_positions,
-                    include_probe_edges=False,
-                    ax=axes[0],
-                )
+                # Create and log visualization if plot components available
+                if plot_components is not None:
+                    fig = create_wandb_plot(cfg, model, train_state, plot_components)
+                    plt.suptitle(f"Epoch: {epoch} - Predictions vs Targets")
+                    wandb_run.log({"plot": wandb.Image(fig)}, step=epoch)
+                    plt.close(fig)
+                wandb_run.log(wandb_val_dict, step=epoch)
 
-                plot_crossstream_predictions(
-                    np.array(plot_probe_predictions),
-                    np.array(plot_probe_targets),
-                    np.array(plot_y_grid),
-                    ax=axes[1],
-                )
-                axes[1].set_xlim(plot_U - 1, plot_U + 1)
-                # add a text box on the left side of the plot
-                axes[1].set_title(
-                    f"min prediction: {np.min(plot_probe_predictions):.2f}\t, max prediction: {np.max(plot_probe_predictions):.2f}, \t, mean prediction: {np.mean(plot_probe_predictions):.2f}",
-                )
-                plt.suptitle(
-                    f"Epoch: {epoch}, probe predictions flowcase [U and TI]{np.round(plot_U,2)} {np.round(plot_TI,2)}",
-                )
-                wandb_run.log(
-                    {"plot": wandb.Image(fig)},
-                    step=epoch,
-                )
-                plt.close(fig)
-                wandb_run.log(
-                    wandb_val_dict,
-                    step=epoch,
-                )
-
+            # Update progress bar
             pbar_dict = {
                 "Train Loss": f"{loss_hist[-1]:.8f}",
                 "Val Loss": f"{validation_metric:.8f}",
             }
             if cfg.model.scale_rel_ws:
                 pbar_dict.update(
-                    {
-                        "Val Loss (scaled rel ws)": f"{metrics['val_mse_scaled_rel_ws']:.8f}",
-                    }
+                    {"Val Loss (scaled rel ws)": f"{val_metrics['val_mse_scaled_rel_ws']:.8f}"}
+                )
+            pbar.set_postfix(pbar_dict)
+
+            # Checkpointing and early stopping
+            if epoch >= cfg.optimizer.early_stop.start_epoch:
+                # Get current metrics (use consistent scaling for MSE and MAE)
+                if cfg.model.scale_rel_ws:
+                    current_mse = val_metrics["val_mse_scaled_rel_ws"]
+                    current_mae = val_metrics["val_mae_scaled_rel_ws"]
+                else:
+                    current_mse = val_metrics["val_mse"]
+                    current_mae = val_metrics["val_mae"]
+
+                # Initialize baselines on first validation after start_epoch
+                if mse_baseline is None:
+                    mse_baseline = current_mse
+                if mae_baseline is None:
+                    mae_baseline = current_mae
+
+                # Compute hybrid metric (geometric mean of normalized MSE and MAE)
+                current_hybrid = compute_hybrid_metric(
+                    current_mse, current_mae, mse_baseline, mae_baseline
                 )
 
-            pbar.set_postfix(pbar_dict)
-            if epoch >= cfg.optimizer.early_stop.start_epoch:
-                # Save the model if it is the best so far
-                if validation_metric < best_metric:
-                    best_metric = validation_metric
+                # Check and save best MSE model
+                if current_mse < best_mse:
+                    best_mse = current_mse
                     ckpt = {
                         "train_state": train_state,
                         "config": OmegaConf.to_container(cfg),
                         "metrics": metrics,
                     }
-                    checkpoint_manager.save(
-                        epoch, ckpt
-                    )  # Save only when performance improves
+                    checkpoint_managers["best_mse"].save(epoch, ckpt)
+                    print(f"New best MSE model: {best_mse:.8f} at epoch {epoch}")
+
+                # Check and save best MAE model
+                if current_mae < best_mae:
+                    best_mae = current_mae
+                    ckpt = {
+                        "train_state": train_state,
+                        "config": OmegaConf.to_container(cfg),
+                        "metrics": metrics,
+                    }
+                    checkpoint_managers["best_mae"].save(epoch, ckpt)
+                    print(f"New best MAE model: {best_mae:.8f} at epoch {epoch}")
+
+                # Check and save best hybrid model
+                if current_hybrid < best_hybrid:
+                    best_hybrid = current_hybrid
+                    ckpt = {
+                        "train_state": train_state,
+                        "config": OmegaConf.to_container(cfg),
+                        "metrics": metrics,
+                    }
+                    checkpoint_managers["best_hybrid"].save(epoch, ckpt)
                     print(
-                        f"New best model found at epoch {epoch} with metric {best_metric}. Checkpoint saved."
+                        f"New best hybrid model: {best_hybrid:.4f} at epoch {epoch} "
+                        f"(MSE={current_mse:.8f}, MAE={current_mae:.8f})"
                     )
 
-                ## Early stopping
+                # Early stopping (still based on MSE for consistency)
                 if "early_stop" in cfg.optimizer:
-                    early_stop = early_stop.update(
-                        validation_metric
-                    )  # TODO, Could add something about training loss here as well
+                    early_stop = early_stop.update(validation_metric)
                     if early_stop.should_stop:
-                        logger.info(
-                            f"Met early stopping criteria, breaking at epoch {epoch}"
-                        )
+                        logger.info(f"Met early stopping criteria, breaking at epoch {epoch}")
                         break
         else:
             pbar.set_postfix({"Train Loss": f"{loss_hist[-1]:.8f}"})
+
         pbar.update(1)
 
     pbar.close()
 
-    cfg = add_to_hydra_cfg(
-        cfg, "final_model_path", os.path.join(cfg.model_save_path, f"final_e_{epoch}")
-    )
-    ## Save final model
-    ckpt = {
-        "train_state": train_state,
-        "config": OmegaConf.to_container(cfg),
-        "metrics": metrics,
-    }
-    orbax_checkpointer.save(
-        os.path.join(cfg.model_save_path, f"final_e_{epoch}"),
-        ckpt,
-        force=True,  # force overwrites exsiting files
-    )
+    # Save final model
+    cfg = save_final_model(cfg, train_state, metrics, epoch, orbax_checkpointer)
+    return cfg
+
+
+def train_GNO_probe_resumable(
+    cfg: DictConfig,
+    wandb_run=None,
+    pretrained_checkpoint_path=None,
+    preemption_checker=None,
+) -> DictConfig:
+    """
+    Train GNO probe model with resume capability for auto-resubmission.
+
+    This function extends train_GNO_probe with automatic checkpoint resume
+    and preemption handling for SLURM job timeout scenarios.
+
+    Args:
+        cfg: Configuration object
+        wandb_run: Optional W&B run for logging
+        pretrained_checkpoint_path: Optional path to pretrained checkpoint
+        preemption_checker: Callable that returns True if preemption requested
+            (e.g., SIGUSR1 received indicating job timeout imminent)
+
+    Returns:
+        Updated configuration after training
+    """
+    # Check for existing checkpoint to resume from
+    checkpoint_path = os.path.join(cfg.model_save_path, "checkpoints")
+    resume_data = load_resume_checkpoint(checkpoint_path)
+
+    # Setup data loaders
+    train_dataset, get_refreshed_train_fn, get_refreshed_val_fn, cfg = setup_data_loaders(cfg)
+
+    # Determine starting state based on resume checkpoint
+    if resume_data is not None and "resume_state" in resume_data:
+        # ===== RESUME MODE =====
+        logger.info("=" * 80)
+        logger.info("RESUMING FROM CHECKPOINT")
+        logger.info("=" * 80)
+
+        resume_state = resume_data["resume_state"]
+        start_epoch = resume_state["epoch"] + 1  # Start from next epoch
+        rng_key = jax.numpy.array(resume_state["rng_key"])
+
+        # Restore multi-metric state (with backward compatibility)
+        best_mse = resume_state.get("best_mse", resume_state.get("best_metric", float("inf")))
+        best_mae = resume_state.get("best_mae", float("inf"))
+        best_hybrid = resume_state.get("best_hybrid", float("inf"))
+        mse_baseline = resume_state.get("mse_baseline", float("inf"))
+        mae_baseline = resume_state.get("mae_baseline", float("inf"))
+
+        loss_hist = resume_state["loss_hist"]
+        val_hist = resume_state["val_hist"]
+        val_epochs = resume_state["val_epochs"]
+
+        # Restore config from checkpoint (maintains consistency)
+        saved_cfg = DictConfig(resume_data["config"])
+        # Keep model_save_path from current cfg (output directory)
+        model_save_path = cfg.model_save_path
+        cfg = saved_cfg
+        cfg = add_to_hydra_cfg(cfg, "model_save_path", model_save_path)
+
+        # Restore early stopping with preserved counter
+        early_stop = restore_early_stop_state(resume_state.get("early_stop_state"), cfg)
+
+        # Re-initialize model for apply_fn (need fresh batch for shape info)
+        first_batch = next(get_refreshed_train_fn())
+        model, _, dropout_active, _, cfg = initialize_model_and_params(
+            cfg, first_batch, pretrained_checkpoint_path=pretrained_checkpoint_path
+        )
+
+        # Restore train_state from checkpoint
+        from utils import setup_optimizer
+
+        optimizer = setup_optimizer(cfg)
+
+        if dropout_active:
+
+            def apply_fn(params, graphs, probe_graphs, wt_mask, probe_mask, rngs):
+                return model.apply(
+                    params, graphs, probe_graphs, wt_mask, probe_mask, train=True, rngs=rngs
+                )
+        else:
+
+            def apply_fn(params, graphs, probe_graphs, wt_mask, probe_mask):
+                return model.apply(params, graphs, probe_graphs, wt_mask, probe_mask, train=True)
+
+        from flax.training.train_state import TrainState
+
+        # Extract params and opt_state from saved train_state
+        saved_train_state = resume_data["train_state"]
+        train_state = TrainState.create(
+            apply_fn=apply_fn,
+            params=saved_train_state.params,
+            tx=optimizer,
+        )
+        # Restore optimizer state
+        train_state = train_state.replace(opt_state=saved_train_state.opt_state)
+
+        logger.info(f"Resuming from epoch {start_epoch}")
+        logger.info(f"Best MSE so far: {best_mse:.8f}")
+        logger.info(f"Best MAE so far: {best_mae:.8f}")
+        logger.info(f"Best Hybrid so far: {best_hybrid:.4f}")
+        logger.info(f"Training history: {len(loss_hist)} epochs completed")
+        if early_stop is not None:
+            logger.info(f"Early stop patience count: {early_stop.patience_count}")
+        logger.info("=" * 80)
+
+    else:
+        # ===== FRESH START =====
+        logger.info("Starting fresh training (no checkpoint found)")
+
+        # Initialize model and parameters
+        first_batch = next(get_refreshed_train_fn())
+        model, params, dropout_active, rng_key, cfg = initialize_model_and_params(
+            cfg, first_batch, pretrained_checkpoint_path=pretrained_checkpoint_path
+        )
+
+        # Store pretrained params for fine-tuning (deep copy)
+        pretrained_params = None
+        if pretrained_checkpoint_path is not None:
+            import copy
+
+            pretrained_params = copy.deepcopy(params)
+            logger.info("Pretrained params stored for fine-tuning (weight anchoring)")
+
+        # Log model parameters
+        log_model_parameters(params, wandb_run)
+
+        # Setup training components
+        train_state, optimizer, early_stop = setup_training_components(
+            cfg, model, params, dropout_active, pretrained_params=pretrained_params
+        )
+
+        start_epoch = 0
+        best_mse = float("inf")
+        best_mae = float("inf")
+        best_hybrid = float("inf")
+        mse_baseline = None
+        mae_baseline = None
+        loss_hist = []
+        val_hist = []
+        val_epochs = []
+
+    # Create JIT-compiled functions
+    prediction_fn = create_prediction_fn(model)
+    train_step_fn = create_train_step_fn(cfg, dropout_active)
+    val_errors_fn = create_val_errors_fn(cfg, prediction_fn)
+
+    # Load plot components for visualization
+    plot_components = load_plot_components(cfg, get_refreshed_val_fn)
+
+    # Setup multi-metric checkpointing (MSE, MAE, hybrid)
+    checkpoint_managers, orbax_checkpointer = setup_multi_metric_checkpointing(cfg)
+
+    # Setup resume checkpointing (for preemption handling)
+    resume_checkpoint_manager, _ = setup_checkpointing(cfg)
+
+    logger.info("Running main loop.")
+    pbar = tqdm(total=cfg.optimizer.n_epochs, initial=start_epoch)
+    pbar.set_description("Training")
+
+    # Main training loop
+    for epoch in range(start_epoch, cfg.optimizer.n_epochs):
+        # Check for preemption signal (SLURM timeout imminent)
+        if preemption_checker is not None and preemption_checker():
+            logger.warning(f"Preemption requested at epoch {epoch}, saving checkpoint...")
+            metrics = {"loss": loss_hist, "val_loss": val_hist, "val_epochs": val_epochs}
+            save_resume_checkpoint_multi_metric(
+                cfg,
+                resume_checkpoint_manager,
+                train_state,
+                metrics,
+                epoch,
+                rng_key,
+                best_mse,
+                best_mae,
+                best_hybrid,
+                mse_baseline,
+                mae_baseline,
+                early_stop,
+                loss_hist,
+                val_hist,
+                val_epochs,
+                is_preemption=True,
+            )
+            logger.info("Checkpoint saved, exiting for resubmission")
+            pbar.close()
+            raise SystemExit(0)  # Clean exit for submitit resubmission
+
+        # Run training epoch
+        train_loss, train_state, rng_key = run_training_epoch(
+            train_state, get_refreshed_train_fn, train_step_fn, dropout_active, rng_key
+        )
+        loss_hist.append(train_loss)
+        metrics = {"loss": loss_hist}
+
+        if cfg.wandb.use and wandb_run is not None:
+            wandb_run.log({"train/loss": loss_hist[-1]}, step=epoch)
+
+        # Validation loop
+        if epoch % cfg.optimizer.validation.rate_of_validation == 0:
+            # Run validation
+            val_metrics = run_validation(cfg, train_state, get_refreshed_val_fn, val_errors_fn)
+
+            # Update metrics history
+            metrics.update(val_metrics)
+            val_hist.append(val_metrics["val_mse"])
+            val_epochs.append(epoch)
+            metrics["val_loss"] = val_hist
+            metrics["val_epochs"] = val_epochs
+
+            # Determine validation metric for checkpointing
+            if cfg.model.scale_rel_ws:
+                validation_metric = val_metrics["val_mse_scaled_rel_ws"]
+            else:
+                validation_metric = val_metrics["val_mse"]
+
+            # W&B logging and plotting
+            if cfg.wandb.use and wandb_run is not None:
+                wandb_val_dict = {
+                    "val/loss(mse)": val_metrics["val_mse"],
+                    "val/mae": val_metrics["val_mae"],
+                    "val/rmse": val_metrics["val_RMSE"],
+                }
+                if cfg.model.scale_rel_ws:
+                    wandb_val_dict.update(
+                        {
+                            "val/loss(mse)_scaled_rel_ws": val_metrics["val_mse_scaled_rel_ws"],
+                            "val/mae_scaled_rel_ws": val_metrics["val_mae_scaled_rel_ws"],
+                            "val/rmse_scaled_rel_ws": val_metrics["val_rmse_scaled_rel_ws"],
+                        }
+                    )
+
+                # Create and log visualization if plot components available
+                if plot_components is not None:
+                    fig = create_wandb_plot(cfg, model, train_state, plot_components)
+                    plt.suptitle(f"Epoch: {epoch} - Predictions vs Targets")
+                    wandb_run.log({"plot": wandb.Image(fig)}, step=epoch)
+                    plt.close(fig)
+                wandb_run.log(wandb_val_dict, step=epoch)
+
+            # Update progress bar
+            pbar_dict = {
+                "Train Loss": f"{loss_hist[-1]:.8f}",
+                "Val Loss": f"{validation_metric:.8f}",
+            }
+            if cfg.model.scale_rel_ws:
+                pbar_dict.update(
+                    {"Val Loss (scaled rel ws)": f"{val_metrics['val_mse_scaled_rel_ws']:.8f}"}
+                )
+            pbar.set_postfix(pbar_dict)
+
+            # Checkpointing and early stopping
+            if epoch >= cfg.optimizer.early_stop.start_epoch:
+                # Get current metrics (use consistent scaling for MSE and MAE)
+                if cfg.model.scale_rel_ws:
+                    current_mse = val_metrics["val_mse_scaled_rel_ws"]
+                    current_mae = val_metrics["val_mae_scaled_rel_ws"]
+                else:
+                    current_mse = val_metrics["val_mse"]
+                    current_mae = val_metrics["val_mae"]
+
+                # Initialize baselines on first validation after start_epoch
+                if mse_baseline is None:
+                    mse_baseline = current_mse
+                if mae_baseline is None:
+                    mae_baseline = current_mae
+
+                # Compute hybrid metric
+                current_hybrid = compute_hybrid_metric(
+                    current_mse, current_mae, mse_baseline, mae_baseline
+                )
+
+                # Check and save best MSE model
+                if current_mse < best_mse:
+                    best_mse = current_mse
+                    ckpt = {
+                        "train_state": train_state,
+                        "config": OmegaConf.to_container(cfg),
+                        "metrics": metrics,
+                    }
+                    checkpoint_managers["best_mse"].save(epoch, ckpt)
+                    print(f"New best MSE model: {best_mse:.8f} at epoch {epoch}")
+
+                # Check and save best MAE model
+                if current_mae < best_mae:
+                    best_mae = current_mae
+                    ckpt = {
+                        "train_state": train_state,
+                        "config": OmegaConf.to_container(cfg),
+                        "metrics": metrics,
+                    }
+                    checkpoint_managers["best_mae"].save(epoch, ckpt)
+                    print(f"New best MAE model: {best_mae:.8f} at epoch {epoch}")
+
+                # Check and save best hybrid model
+                if current_hybrid < best_hybrid:
+                    best_hybrid = current_hybrid
+                    ckpt = {
+                        "train_state": train_state,
+                        "config": OmegaConf.to_container(cfg),
+                        "metrics": metrics,
+                    }
+                    checkpoint_managers["best_hybrid"].save(epoch, ckpt)
+                    print(
+                        f"New best hybrid model: {best_hybrid:.4f} at epoch {epoch} "
+                        f"(MSE={current_mse:.8f}, MAE={current_mae:.8f})"
+                    )
+
+                # Save resume checkpoint periodically (for preemption recovery)
+                # Save every time we improve any metric
+                if (
+                    current_mse <= best_mse
+                    or current_mae <= best_mae
+                    or current_hybrid <= best_hybrid
+                ):
+                    save_resume_checkpoint_multi_metric(
+                        cfg,
+                        resume_checkpoint_manager,
+                        train_state,
+                        metrics,
+                        epoch,
+                        rng_key,
+                        best_mse,
+                        best_mae,
+                        best_hybrid,
+                        mse_baseline,
+                        mae_baseline,
+                        early_stop,
+                        loss_hist,
+                        val_hist,
+                        val_epochs,
+                        is_preemption=False,
+                    )
+
+                # Early stopping (still based on MSE for consistency)
+                if "early_stop" in cfg.optimizer and early_stop is not None:
+                    early_stop = early_stop.update(validation_metric)
+                    if early_stop.should_stop:
+                        logger.info(f"Met early stopping criteria, breaking at epoch {epoch}")
+                        break
+        else:
+            pbar.set_postfix({"Train Loss": f"{loss_hist[-1]:.8f}"})
+
+        pbar.update(1)
+
+    pbar.close()
+
+    # Save final model
+    cfg = save_final_model(cfg, train_state, metrics, epoch, orbax_checkpointer)
     return cfg
 
 
 if __name__ == "__main__":
-
     import warnings
 
     from hydra import compose, initialize
@@ -535,9 +614,7 @@ if __name__ == "__main__":
 
     warnings.simplefilter(action="ignore", category=FutureWarning)
 
-    config_path = os.path.relpath(
-        os.path.join(os.path.dirname(__file__), "configurations")
-    )
+    config_path = os.path.relpath(os.path.join(os.path.dirname(__file__), "configurations"))
     config_name = "test_GNO_probe"
     output_dir = os.path.dirname(os.path.abspath(config_path))
     with initialize(version_base="1.3", config_path=config_path):
@@ -552,10 +629,11 @@ if __name__ == "__main__":
     if cfg.wandb.use:
         run_name = output_dir
         wandb_run = wandb.init(project=cfg.wandb.project, name=run_name)
-        wandb_run.config.update(
-            OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
-        )
+        wandb_run.config.update(OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True))
     else:
         wandb_run = None
 
-    train_GNO_probe(cfg, wandb_run=wandb_run)
+    # Check for pretrained checkpoint path in config (for transfer learning)
+    pretrained_checkpoint_path = cfg.get("pretrained_checkpoint_path", None)
+
+    train_GNO_probe(cfg, wandb_run=wandb_run, pretrained_checkpoint_path=pretrained_checkpoint_path)

@@ -5,16 +5,9 @@ Windfarm_GNN.py:
 [1] Li, G., Xiong, C., Thabet, A., & Ghanem, B. (2020). DeeperGCN: All You Need to Train Deeper GCNs. http://arxiv.org/abs/2006.07739
 """
 
-import os
-import sys
-
-main_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.append(main_path)
-
 import logging
-from typing import Any, Dict
+from typing import Any
 
-import jax
 import jax.numpy as jnp
 import jraph
 from flax import linen as nn
@@ -28,14 +21,14 @@ logger.setLevel(logging.DEBUG)
 
 
 class Windfarm_GNN(nn.Module):
-    name: str
+    name: str | None = None
     target_size: int
     latent_size: int
     hidden_layer_size: int
     num_mlp_layers: int
     message_passing_steps: int
-    decoder_hidden_layer_size: int = None
-    num_decoder_layers: int = None
+    decoder_hidden_layer_size: int | None = None
+    num_decoder_layers: int | None = None
     encoder_dropout_rate: float = 0.0
     processor_dropout_rate: float = 0.0
     layer_norm_encoder: bool = False
@@ -43,16 +36,22 @@ class Windfarm_GNN(nn.Module):
     message_norm: bool = False
     layer_norm_decoder: bool = False  #! Should always be false
     res_net: bool = False
-    RBF_encoder_kwargs: Dict[str, Any] = None
+    RBF_encoder_kwargs: dict[str, Any] | None = None
     encode: bool = True
     decode: bool = True  # If False returns node latent space intended for probe model
     epsilon: float = 1e-6
+    # LoRA parameters - granular control per component
+    use_lora_embedder: bool = False
+    use_lora_processor: bool = False
+    use_lora_decoder: bool = False
+    lora_rank: int = 8
+    lora_alpha: float = 16.0
 
     def setup(self):
         super().setup()
-        assert (
-            self.message_norm * self.layer_norm_processor != 1
-        ), "Cannot have both message norm and layer norm in the processor"
+        assert self.message_norm * self.layer_norm_processor != 1, (
+            "Cannot have both message norm and layer norm in the processor"
+        )
 
     @nn.compact
     def __call__(
@@ -60,8 +59,7 @@ class Windfarm_GNN(nn.Module):
         graphs: jraph.GraphsTuple,
         train: bool = False,  #! True during training, only releveant for dropout
     ) -> jnp.ndarray:
-
-        # TODO Should this replace embedder (probably not)?
+        # RBF encoding is applied to edges before embedder (not a replacement)
         if self.encode:
             if self.RBF_encoder_kwargs is not None:
                 RBF_encoder = RBFEncoder(**self.RBF_encoder_kwargs)
@@ -83,6 +81,9 @@ class Windfarm_GNN(nn.Module):
                 activation=nn.relu,
                 dropout_rate=self.encoder_dropout_rate,
                 layer_norm=self.layer_norm_encoder,
+                use_lora=self.use_lora_embedder,
+                lora_rank=self.lora_rank,
+                lora_alpha=self.lora_alpha,
             )
             embed_edge_fn = MLP(
                 name="embed_edge",
@@ -91,6 +92,9 @@ class Windfarm_GNN(nn.Module):
                 activation=nn.relu,
                 dropout_rate=self.encoder_dropout_rate,
                 layer_norm=self.layer_norm_encoder,
+                use_lora=self.use_lora_embedder,
+                lora_rank=self.lora_rank,
+                lora_alpha=self.lora_alpha,
             )
 
             embedder = jraph.GraphMapFeatures(
@@ -111,7 +115,6 @@ class Windfarm_GNN(nn.Module):
         # GNN block
         mlp_feature_sizes = [self.hidden_layer_size] * self.num_mlp_layers
         for i in range(self.message_passing_steps):
-
             if self.message_norm:
                 message_norm_scale = self.param(
                     f"message_norm_scale_{i}", nn.initializers.ones, (1,)
@@ -128,10 +131,13 @@ class Windfarm_GNN(nn.Module):
                 activation=nn.relu,
                 dropout_rate=self.processor_dropout_rate,
                 layer_norm=node_update_layer_norm,  # Special case due to potential message norm
+                use_lora=self.use_lora_processor,
+                lora_rank=self.lora_rank,
+                lora_alpha=self.lora_alpha,
             )
 
-            def node_update_fn(n, **kwargs):
-                return original_node_update_fn(n, train=train)
+            def node_update_fn(n, _update_fn=original_node_update_fn, _train=train, **kwargs):
+                return _update_fn(n, train=_train)
 
             # node_update_fn = lambda n, **kwargs: original_node_update_fn(n, train=train)
 
@@ -162,6 +168,9 @@ class Windfarm_GNN(nn.Module):
                 activation=nn.relu,
                 dropout_rate=0.0,
                 layer_norm=self.layer_norm_decoder,
+                use_lora=self.use_lora_decoder,
+                lora_rank=self.lora_rank,
+                lora_alpha=self.lora_alpha,
             )
 
             if self.res_net:
@@ -173,100 +182,8 @@ class Windfarm_GNN(nn.Module):
         else:
             new_nodes = processed_graphs.nodes
 
-        proto_mask = jnp.sum(jnp.abs(graphs.nodes), axis=-1)
+        proto_mask = jnp.sum(jnp.abs(graphs.nodes), axis=-1)  # type: ignore[arg-type]
         mask = jnp.bool(proto_mask).reshape(-1, 1)
         new_nodes = new_nodes * mask
 
         return new_nodes
-
-
-if __name__ == "__main__":
-    import torch
-
-    from utils import (
-        JraphDataLoader,
-        Torch_Geomtric_Dataset,
-        dynamically_batch_graph_operator,
-    )
-
-    torch.multiprocessing.set_sharing_strategy("file_system")
-
-    mini_model = MLP(
-        name="mini_model",
-        feature_sizes=[64, 64],
-        output_size=2,
-        activation=nn.relu,
-        dropout_rate=0.0,
-        layer_norm=False,
-    )
-
-    mini_parms = mini_model.init(jax.random.PRNGKey(0), jnp.ones((5, 64)))
-    mini_output = mini_model.apply(mini_parms, jnp.ones((5, 64)))
-
-    case = 2
-    if case == 1:
-        # TODO this option does not work currently because the positional information is only added to the nodes
-        add_pos_to_nodes = True
-        add_pos_to_edges = False
-
-    elif case == 2:
-        add_pos_to_nodes = False
-        add_pos_to_edges = True
-
-    data_path = os.path.abspath("../data/medium_graphs_nodes/train_pre_processed")
-    # data_path = os.path.abspath(
-    #     "/work/users/jpsch/SPO_sophia_dir/data/medium_graphs_nodes/train_pre_processed"
-    # )  # sophia version
-    dataset = Torch_Geomtric_Dataset(data_path)
-    loader = JraphDataLoader(
-        dataset,
-        batch_size=1,
-        shuffle=True,
-        idxs_per_sample=1,
-        add_pos_to_nodes=add_pos_to_nodes,
-        add_pos_to_edges=False,
-    )
-    padded_loader = (
-        dynamically_batch_graph_operator(  # TODO Change to default jraph loader
-            loader, n_node=100, n_edge=300, n_graph=5
-        )
-    )
-    for graphs, _, _ in padded_loader:
-        # graphs_input = graphs
-        # TODO Make assertion on the type of dataset that is loaded beacuase this will not work with all datasets
-        graph_nodes_input = graphs.nodes[:, 3:]
-        graphs_nodes_output = graphs.nodes[:, :2]
-        graphs_input = graphs._replace(nodes=graph_nodes_input)
-        graphs_output = graphs._replace(nodes=graphs_nodes_output)
-        break
-
-    # Define the model
-    model = Windfarm_GNN(
-        target_size=graphs_output.nodes.shape[-1],
-        latent_size=64,
-        hidden_layer_size=64,
-        num_mlp_layers=2,
-        message_passing_steps=2,
-        decoder_hidden_layer_size=64,
-        num_decoder_layers=2,
-        encoder_dropout_rate=0.0,
-        processor_dropout_rate=0.0,
-        layer_norm_encoder=False,
-        layer_norm_processor=False,
-        message_norm=False,
-        layer_norm_decoder=False,
-        epsilon=1e-6,
-    )
-
-    params = model.init(jax.random.PRNGKey(0), graphs_input, train=False)
-    output = model.apply(params, graphs_input)
-    print(params)
-    print(output.shape)
-
-    @jax.jit
-    def predict_fn(graphs):
-        return model.apply(params, graphs)
-
-    prediction = predict_fn(graphs_input)
-
-    print(prediction.shape)

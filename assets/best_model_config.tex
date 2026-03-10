@@ -1,0 +1,21 @@
+% DO NOT EDIT THIS TABLE CHANGE IT IN CODE, SEE https://gitlab.windenergy.dtu.dk/superposition-operator/spo-operator-tests/-/blob/main/Experiments/articles_plotting/grid_search.py?ref_type=heads
+\begin{table*}[htb]
+\caption{Best model configuration and performance (grid search V, model j, optimizer 8).}
+\label{tab:best_model_config}
+\centering
+\footnotesize
+\begin{tabular}{l|p{0.5cm}p{0.6cm}p{0.5cm}p{0.6cm}p{0.5cm}|p{1.2cm}p{1.1cm}p{0.5cm}p{0.7cm}|p{1.35cm}p{1.35cm}p{1.35cm}}
+\hline
+& \multicolumn{5}{c|}{\textbf{Model}} & \multicolumn{4}{c|}{\textbf{Optimizer}} & \multicolumn{3}{c}{\textbf{Metrics}} \\
+& $Q$ & $L_\mathrm{int}$ & $q_\mathrm{int}$ & $L_\mathrm{dec}$ & $q_\mathrm{dec}$ & LR type & LR & $n_\mathrm{p}$ & $n_G$ & MSE$_\mathrm{trn}$ [$\mathrm{m^2s^{-2}}$] & MSE$_\mathrm{val}$ [$\mathrm{m^2s^{-2}}$] & MAE$_\mathrm{val}$ [$\mathrm{ms^{-1}}$] \\
+\hline
+Description & \scriptsize{Latent dim.} & \scriptsize{Int. layers} & \scriptsize{Int. width} & \scriptsize{Dec. layers} & \scriptsize{Dec. width} & -- & -- & \scriptsize{Probes/ batch} & \scriptsize{Graphs/ batch} & -- & -- & -- \\
+Value & 100 & 2 & 250 & 3 & 350 & \scriptsize{Piecewise const.$^\dagger$} & 5$\times 10^{-3}$ & 500 & 2 & 0.015 & 0.016 & 0.037 \\
+\hline
+\end{tabular}
+\vspace{0.5em}
+\begin{minipage}{0.9\linewidth}
+\footnotesize
+$^{\dagger}$ Learning rate schedule was not triggered during training.
+\end{minipage}
+\end{table*}

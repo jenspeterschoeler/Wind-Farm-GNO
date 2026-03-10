@@ -1,0 +1,12 @@
+# TurbOPark 2500 layouts dataset configuration
+# Phase 1 pretraining dataset for transfer learning experiments
+# Lower fidelity engineering wake model (TurbOPark/TurboGaussian)
+# 2500 layouts × 4 inflows = 10,000 graphs
+
+type: "GraphFarmsOperatorDataset"
+encoding: "torch"
+main_path: "/work/users/jpsch/gno/data-generation/data/turbopark_2500layouts"
+train_path: "/work/users/jpsch/gno/data-generation/data/turbopark_2500layouts/train_pre_processed"
+val_path: "/work/users/jpsch/gno/data-generation/data/turbopark_2500layouts/val_pre_processed"
+test_path: "/work/users/jpsch/gno/data-generation/data/turbopark_2500layouts/test_pre_processed"
+pre_processed: True

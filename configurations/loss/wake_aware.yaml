@@ -1,0 +1,30 @@
+# Wake-aware loss configuration
+#
+# This loss function addresses the tendency of GNO models to over/under predict
+# wake effects by applying:
+# 1. Asymmetric weighting: different penalties for under vs over-prediction
+# 2. Spatial weighting: higher weight for errors in wake regions
+#
+# Usage:
+#   python train_GNO_probe.py +loss=wake_aware
+#   python train_GNO_probe.py model=WindfarmGNO_probe_best_vj8 +loss=wake_aware
+#
+# Parameters can be overridden on command line:
+#   python train_GNO_probe.py +loss=wake_aware loss.wake_weight=3.0
+
+type: "wake_aware_mse"
+
+# Threshold for identifying wake regions
+# 0.1 means nodes with velocity < 90% of freestream are considered wake
+deficit_threshold: 0.1
+
+# Asymmetric error weighting
+# alpha_under: weight for under-predicting velocity (over-predicting deficit)
+# alpha_over: weight for over-predicting velocity (under-predicting deficit)
+# Higher alpha_under penalizes conservative predictions more
+alpha_under: 0.7
+alpha_over: 0.3
+
+# Spatial weighting for wake regions
+# wake_weight > 1 increases focus on wake prediction accuracy
+wake_weight: 2.0

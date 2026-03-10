@@ -1,0 +1,5 @@
+# @package _global_
+# Phase 1 Global: Vj8 + global conditioning + dropout_layernorm
+defaults:
+  - /model: WindfarmGNO_probe_best_vj8_global
+  - /model/regularization: dropout_layernorm

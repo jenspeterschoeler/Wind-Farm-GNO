@@ -7,3 +7,7 @@ assets/GNO_probe_IO.svg filter=lfs diff=lfs merge=lfs -text
 assets/GNO_probe.svg filter=lfs diff=lfs merge=lfs -text
 assets/GNO_probe_IO.png filter=lfs diff=lfs merge=lfs -text
 assets/GNO_probe.png filter=lfs diff=lfs merge=lfs -text
+data-generation/data/*/train_pre_processed/*.zip filter=lfs diff=lfs merge=lfs -text
+data-generation/data/*/val_pre_processed/*.zip filter=lfs diff=lfs merge=lfs -text
+data-generation/data/*/test_pre_processed/*.zip filter=lfs diff=lfs merge=lfs -text
+assets/best_model_L1_L3_phase2/*.msgpack filter=lfs diff=lfs merge=lfs -text

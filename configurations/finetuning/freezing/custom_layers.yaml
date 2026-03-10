@@ -1,0 +1,10 @@
+# Hybrid: freeze embedder + first 2 layers of wt_processor
+# Demonstrates component + layer level freezing
+enabled: true
+strategy: hybrid
+frozen_components:
+  - embedder
+frozen_layers:
+  Windfarm_GNN_0:  # wt_processor
+    - 0
+    - 1

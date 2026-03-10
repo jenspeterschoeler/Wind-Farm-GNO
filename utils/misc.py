@@ -1,3 +1,5 @@
+"""Miscellaneous utility functions for GNO training and evaluation."""
+
 import logging
 import os
 import platform
@@ -8,7 +10,7 @@ import jax
 import numpy as np
 import optax
 from jax import numpy as jnp
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
@@ -18,6 +20,25 @@ logger = logging.getLogger(__name__)
 
 def get_run_info():
     """Get the run info for the experiment"""
+    # Get git commit hash if available
+    # Try 'git' first, then common system paths as fallback (for isolated envs like pixi)
+    git_commit = "unknown"
+    for git_cmd in [
+        "git",
+        "/usr/bin/git",
+        "/usr/local/bin/git",
+        "/apps/software/git/2.41.0-GCCcore-12.3.0-nodocs/bin/git",  # Sophia cluster
+    ]:
+        try:
+            git_commit = (
+                subprocess.check_output([git_cmd, "rev-parse", "HEAD"], stderr=subprocess.DEVNULL)
+                .decode("ascii")
+                .strip()
+            )
+            break  # Success, stop trying
+        except (subprocess.CalledProcessError, FileNotFoundError, PermissionError):
+            continue
+
     run_info = {
         "TimeInitiatedTraining": datetime.now().replace(microsecond=0).isoformat(),
         "platform": platform.platform(),
@@ -25,9 +46,7 @@ def get_run_info():
         "python_version": platform.python_version(),
         "conda_env": os.environ.get("CONDA_DEFAULT_ENV"),
         "available_devices": str(jax.devices()),
-        "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"])
-        .decode("ascii")
-        .strip(),
+        "git_commit": git_commit,
     }
     return run_info
 
@@ -35,16 +54,6 @@ def get_run_info():
 def add_to_hydra_cfg(cfg, key, value):
     """Function to add a key-value pair to a hydra config object, do not use for replacement of existing keys (unless not part of a struct)"""
     OmegaConf.set_struct(cfg, False)
-    # keys = key.split(".")  # Split the key by dot to handle nested keys
-
-    # if len(keys) > 1:
-    #     # If the key is nested, create the nested structure
-    #     for k in keys[:-1]:
-    #         if k not in cfg:
-    #             cfg[k] = OmegaConf.create({})
-    #         cfg = cfg[k]
-    #     key = keys[-1]
-
     cfg.update(OmegaConf.create({key: value}))
     OmegaConf.set_struct(cfg, True)
     return cfg
@@ -57,29 +66,24 @@ def setup_optimizer(cfg):
             assert "learning_rate" in cfg.optimizer, "learning_rate is not defined"
             lr_schedule = optax.constant_schedule(cfg.optimizer.learning_rate)
             logging.info(
-                f"No learning rate schedule is defined, using default constant learning rate"
+                "No learning rate schedule is defined, using default constant learning rate"
             )
 
         elif cfg.optimizer.lr_schedule.type == "constant":
-            assert (
-                "learning_rate" in cfg.optimizer.lr_schedule
-            ), "learning_rate is not defined"
-            lr_schedule = optax.constant_schedule(
-                cfg.optimizer.lr_schedule.learning_rate
-            )
+            assert "learning_rate" in cfg.optimizer.lr_schedule, "learning_rate is not defined"
+            lr_schedule = optax.constant_schedule(cfg.optimizer.lr_schedule.learning_rate)
 
         elif cfg.optimizer.lr_schedule.type == "piecewise_constant":
-            assert (
-                "init_learning_rate" in cfg.optimizer.lr_schedule
-            ), "init_learning_rate is not defined"
+            assert "init_learning_rate" in cfg.optimizer.lr_schedule, (
+                "init_learning_rate is not defined"
+            )
 
-            bounds_and_scales = {
-                bound: value
-                for bound, value in zip(
+            bounds_and_scales = dict(
+                zip(
                     cfg.optimizer.lr_schedule.boundaries,
                     cfg.optimizer.lr_schedule.scales,
                 )
-            }
+            )
 
             lr_schedule = optax.piecewise_constant_schedule(
                 init_value=cfg.optimizer.lr_schedule.init_learning_rate,
@@ -96,33 +100,6 @@ def setup_optimizer(cfg):
     else:
         raise NotImplementedError("The optimizer is not implemented, chose from 'adam'")
     return optimizer
-
-
-if __name__ == "__main__":
-    from jax import numpy as jnp
-    from matplotlib import pyplot as plt
-
-    # Initial learning rate
-    init_lr = jnp.float32(0.1)
-
-    # Define the schedule: divide by 10 at step 100
-    lr_schedule = optax.piecewise_constant_schedule(
-        init_value=init_lr,
-        boundaries_and_scales={
-            100: jnp.float32(0.1),
-            140: jnp.float32(0.1),
-        },  # At step 100, multiply by 0.1
-    )
-
-    steps = jnp.arange(0, 200, 10)
-    lrs = [lr_schedule(step) for step in steps]
-
-    plt.figure()
-    plt.semilogy(steps, lrs)
-    plt.xlabel("Steps")
-    plt.ylabel("Learning rate")
-    plt.title("Piecewise constant schedule")
-    plt.show()
 
 
 def convert_to_wandb_format(nested_dict, parent_key="", separator="/"):
@@ -145,35 +122,147 @@ def convert_to_wandb_format(nested_dict, parent_key="", separator="/"):
     return items
 
 
-def get_model_save_paths(model_path):
+def _get_latest_checkpoint(checkpoint_dir: str) -> str | None:
+    """
+    Get the latest checkpoint from a checkpoint directory.
+
+    Orbax saves checkpoints with epoch number as directory name.
+    Returns the path to the highest-numbered checkpoint.
+
+    Args:
+        checkpoint_dir: Path to checkpoint directory (e.g., checkpoints_best_mse/)
+
+    Returns:
+        Path to latest checkpoint, or None if no checkpoints found
+    """
+    if not os.path.exists(checkpoint_dir):
+        return None
+
+    list_checkpoints = os.listdir(checkpoint_dir)
+    if not list_checkpoints:
+        return None
+
+    # Filter to numeric directories only (Orbax format)
+    numeric_dirs = []
+    for d in list_checkpoints:
+        try:
+            numeric_dirs.append((int(d), d))
+        except ValueError:
+            continue
+
+    if not numeric_dirs:
+        return None
+
+    # Get highest epoch
+    best_epoch, best_dir = max(numeric_dirs, key=lambda x: x[0])
+    return os.path.join(checkpoint_dir, best_dir)
+
+
+def get_model_save_paths(model_path: str) -> dict:
+    """
+    Get paths to all model checkpoints (multi-metric aware).
+
+    Supports both legacy single-checkpoint format and new multi-metric format:
+    - Legacy: model/checkpoints/ (single best checkpoint)
+    - New: model/checkpoints_best_mse/, checkpoints_best_mae/, checkpoints_best_hybrid/
+
+    Args:
+        model_path: Path to model save directory (e.g., outputs/experiment/model/)
+
+    Returns:
+        Dict with keys:
+        - 'final': Path to final model (or None)
+        - 'best_mse': Path to best MSE checkpoint (or None)
+        - 'best_mae': Path to best MAE checkpoint (or None)
+        - 'best_hybrid': Path to best hybrid checkpoint (or None)
+        - 'best': Legacy key pointing to best_mse (for backward compatibility)
+        - 'periodic': List of all periodic checkpoint paths (or empty list)
+    """
+    paths = {
+        "final": None,
+        "best_mse": None,
+        "best_mae": None,
+        "best_hybrid": None,
+        "best": None,  # Legacy compatibility
+        "periodic": [],
+    }
+
+    if not os.path.exists(model_path):
+        raise ValueError(f"Model save path {model_path} does not exist")
+
     list_dir = os.listdir(model_path)
-    final_model_path = None
-    checkpoint_dir = None
-    for i, dir_ in enumerate(list_dir):
+
+    for dir_ in list_dir:
+        full_path = os.path.join(model_path, dir_)
+
         if "plots" in dir_:
             continue
         elif "final" in dir_:
-            final_model_path = os.path.join(model_path, dir_)
-        elif "checkpoints" in dir_:
-            checkpoint_dir = os.path.join(model_path, dir_)
+            paths["final"] = full_path
+        elif dir_ == "checkpoints_best_mse":
+            paths["best_mse"] = _get_latest_checkpoint(full_path)
+        elif dir_ == "checkpoints_best_mae":
+            paths["best_mae"] = _get_latest_checkpoint(full_path)
+        elif dir_ == "checkpoints_best_hybrid":
+            paths["best_hybrid"] = _get_latest_checkpoint(full_path)
+        elif dir_ == "checkpoints_periodic":
+            # Get all periodic checkpoints
+            periodic: list[str] = []
+            periodic_dir = full_path
+            if os.path.exists(periodic_dir):
+                for ckpt_dir in os.listdir(periodic_dir):
+                    try:
+                        int(ckpt_dir)  # Validate it's a numeric epoch dir
+                        periodic.append(os.path.join(periodic_dir, ckpt_dir))
+                    except ValueError:
+                        continue
+            # Sort by epoch number
+            periodic.sort(key=lambda x: int(os.path.basename(x)))
+            paths["periodic"] = periodic
+        elif dir_ == "checkpoints":
+            # Legacy single checkpoint format - use as fallback for best_mse if not set
+            legacy_path = _get_latest_checkpoint(full_path)
+            if legacy_path is not None and paths["best_mse"] is None:
+                paths["best_mse"] = legacy_path
 
-    if final_model_path is None and checkpoint_dir is None:
-        raise ValueError("No final model or checkpoints found in model_save")
+    # Set 'best' to best_mse for backward compatibility
+    paths["best"] = paths["best_mse"]
 
-    list_checkpoints = os.listdir(checkpoint_dir)
-    best_dir = -999
-    for i, dir_ in enumerate(list_checkpoints):
-        if int(dir_) > best_dir:
-            best_dir = int(dir_)
-            best_dir_str = dir_
-    best_model_path = os.path.join(checkpoint_dir, best_dir_str)
+    # Validate we found something
+    has_any = (
+        paths["final"] is not None
+        or paths["best_mse"] is not None
+        or paths["best_mae"] is not None
+        or paths["best_hybrid"] is not None
+    )
 
-    paths = [final_model_path, best_model_path]
+    if not has_any:
+        raise ValueError(f"No final model or checkpoints found in {model_path}")
+
     return paths
 
 
-def get_model_paths(cfg):
-    """Get the model paths from the config file"""
+def get_model_save_paths_legacy(model_path):
+    """
+    Legacy function for backward compatibility.
+
+    Returns [final_model_path, best_model_path] tuple.
+    Use get_model_save_paths() for new code.
+    """
+    paths = get_model_save_paths(model_path)
+    return [paths["final"], paths["best"]]
+
+
+def get_model_paths(cfg) -> dict:
+    """
+    Get the model paths from the config file.
+
+    Args:
+        cfg: Configuration object with model_save_path
+
+    Returns:
+        Dict with checkpoint paths (see get_model_save_paths for keys)
+    """
     model_path = cfg.model_save_path
     if model_path is None:
         raise ValueError("No model save path found in config file")
@@ -181,7 +270,7 @@ def get_model_paths(cfg):
     if not os.path.exists(model_path):
         raise ValueError(f"Model save path {model_path} does not exist")
 
-    # Get the model save paths
+    # Get the model save paths (returns dict with all checkpoint types)
     paths = get_model_save_paths(model_path)
 
     return paths
@@ -189,7 +278,7 @@ def get_model_paths(cfg):
 
 # Convert ndarray to list if necessary
 def convert_ndarray(obj):
-    if isinstance(obj, (np.ndarray, jnp.ndarray)):
+    if isinstance(obj, np.ndarray | jnp.ndarray):
         return obj.tolist()
     elif isinstance(obj, dict):
         return {k: convert_ndarray(v) for k, v in obj.items()}

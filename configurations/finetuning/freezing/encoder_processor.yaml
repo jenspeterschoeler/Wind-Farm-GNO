@@ -1,0 +1,8 @@
+# Freeze embedder and wt_processor
+# Train only probe_processor and decoder
+# Useful for adapting to new probe locations while preserving turbine processing
+enabled: true
+strategy: component
+frozen_components:
+  - embedder
+  - wt_processor

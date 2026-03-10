@@ -28,7 +28,7 @@ To run the included environment, clone the repository and install the necessary 
 
 1. Install Pixi
 
-    Follow the instructions for your platform:  
+    Follow the instructions for your platform:
     👉 https://pixi.sh/
 
 2. Set up the environment
@@ -39,26 +39,36 @@ To run the included environment, clone the repository and install the necessary 
     pixi install
     ```
 
+> On Sophia ensure contents of Git LFS files are pulled after cloning the repository:
+    >```bash
+    >module load git git-lfs
+    >git submodule foreach --recursive '
+    >git lfs install --force &&
+    >git lfs fetch --all &&
+    >git lfs checkout
+    >'
+    >```
+
 ### 2) Data
 
 #### Use included `mini_graphs`
 
-To ensure the training and test scripts run out of the box, a miniature version of the data is included in this repository.  
+To ensure the training and test scripts run out of the box, a miniature version of the data is included in this repository.
 The miniature dataset is preconfigured in the test configurations.
 
 #### Publication test data (optional)
 
-Required to run the plotting scripts used in the publication:  
-- [plot_predictions_article.py](./Experiments/articles_plotting/plot_predictions_article.py)  
-- [wt_predictions.py](./Experiments/articles_plotting/wt_predictions.py)  
+Required to run the plotting scripts used in the publication:
+- [plot_predictions_article.py](./Experiments/articles_plotting/plot_predictions_article.py)
+- [wt_predictions.py](./Experiments/articles_plotting/wt_predictions.py)
 - [memory_consumption_calculation.py](./Experiments/articles_plotting/memory_consumption_calculation.py)
 
-1. Download the test data from Zenodo: https://doi.org/10.5281/zenodo.17671257  
+1. Download the test data from Zenodo: https://doi.org/10.5281/zenodo.17671257
 2. Unzip the dataset into:  `./data/zenodo_graphs/<contents of the .zip archive>`
 
 #### Re-create the dataset or use custom data
 
-To re-create the dataset or use your own data, follow the instructions in this repository:  
+To re-create the dataset or use your own data, follow the instructions in this repository:
 https://github.com/jenspeterschoeler/Wind-farm-Graph-flow-data
 
 To use custom data, ensure it is structured as expected by the data loading scripts in [`torch_loader.py`](./utils/torch_loader.py), and configure a new Hydra config accordingly.

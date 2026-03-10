@@ -1,0 +1,6 @@
+# Piecewise constant LR schedule for Phase 1 experiments
+# Earlier decay boundaries optimized for transfer learning pretraining
+type: "piecewise_constant"
+init_learning_rate: 0.005
+boundaries: [200, 350]
+scales: [0.1, 0.1]

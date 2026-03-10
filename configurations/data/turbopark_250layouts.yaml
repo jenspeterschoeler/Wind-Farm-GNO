@@ -1,0 +1,11 @@
+# TurbOPark 250 layouts dataset configuration
+# Dataset for pretraining in transfer learning experiments
+# Lower fidelity engineering wake model, ~4x larger than AWF dataset
+
+type: "GraphFarmsOperatorDataset"
+encoding: "torch"
+main_path: "/work/users/jpsch/gno/data-generation/data/turbopark_250layouts"
+train_path: "/work/users/jpsch/gno/data-generation/data/turbopark_250layouts/train_pre_processed"
+val_path: "/work/users/jpsch/gno/data-generation/data/turbopark_250layouts/val_pre_processed"
+test_path: "/work/users/jpsch/gno/data-generation/data/turbopark_250layouts/test_pre_processed"
+pre_processed: True

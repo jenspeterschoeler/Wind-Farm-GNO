@@ -1,0 +1,9 @@
+# LoRA with rank 4 (very parameter-efficient)
+# ~1-2% of base parameters as trainable adapters
+# Uses manual LoRADense implementation (no external dependencies)
+# NOTE: Requires modifying model source code to replace nn.Dense with LoRADense
+# See utils/finetuning/lora.py for implementation details
+enabled: true
+rank: 4
+alpha: 8  # scaling = alpha/rank = 2.0
+target_modules: [Dense]

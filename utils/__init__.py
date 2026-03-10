@@ -1,5 +1,6 @@
 # from . import run_pywake
 from . import data_tools, graph, plotting
+from .config_validation import ConfigValidationError, validate_config
 from .GNO_probe import initialize_GNO_probe, inverse_scale_rel_ws, scale_rel_ws
 from .misc import (
     add_to_hydra_cfg,

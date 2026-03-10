@@ -1,0 +1,76 @@
+# AWF Full Training Configuration with Auto-Resubmission
+# Uses the exact architecture from assets/best_model_Vj8
+# Dataset: Full AWF dataset from data-generation/data/awf_graphs
+#
+# This config uses Hydra submitit launcher for SLURM job submission with
+# automatic checkpoint-based resubmission on timeout.
+#
+# Usage:
+#   # Submit to SLURM with auto-resubmission (recommended)
+#   python main.py --config-name awf_train
+#
+#   # Local testing (no submitit)
+#   python main.py --config-name awf_train hydra/launcher=basic
+#
+#   # Test with mini dataset locally
+#   python main.py --config-name awf_train data=mini_graphs_nodes optimizer.n_epochs=10 hydra/launcher=basic
+#
+#   # Override max resubmissions
+#   python main.py --config-name awf_train hydra.launcher.max_num_timeout=5
+
+defaults:
+  - _self_
+  - data: awf_graphs
+  - data/io: GNO_probe
+  - model: WindfarmGNO_probe_best_vj8
+  - model/regularization: dropout_layernorm
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff
+  - optimizer: adam
+  - optimizer/batching: GNO_probe
+  - optimizer/validation: GNN
+  - optimizer/lr_schedule: piecewise_constant_best_vj8
+  - override hydra/launcher: submitit_slurm
+
+wandb:
+  use: True
+  project: GNO_awf_train
+
+# Enable resumable training for auto-resubmission
+optimizer:
+  resumable: true
+
+# Sophia cluster output directory
+output_base_dir: /work/users/jpsch/SPO_sophia_dir/outputs/GNO_awf_train
+
+hydra:
+  run:
+    dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+  # Submitit SLURM launcher configuration for auto-resubmission
+  launcher:
+    # Timeout and preemption settings
+    timeout_min: 2850           # 47.5 hours (just under 48h gpuq limit)
+    signal_delay_s: 300         # Send SIGUSR1 5 minutes before timeout
+
+    # Auto-resubmission on timeout
+    max_num_timeout: 3          # Maximum 3 resubmissions (~6 days total)
+
+    # Resource allocation
+    nodes: 1
+    tasks_per_node: 1
+    gpus_per_node: 1
+    cpus_per_task: 12
+    mem_gb: 64
+
+    # SLURM partition
+    partition: gpuq
+
+    # Environment setup for Sophia cluster
+    setup:
+      - export PIXI_PROJECT_ROOT=/work/users/jpsch/gno
+      - eval "$(pixi shell-hook -e cluster)"
+
+    # Additional SLURM parameters
+    additional_parameters:
+      exclusive: true
+      time: "48:00:00"

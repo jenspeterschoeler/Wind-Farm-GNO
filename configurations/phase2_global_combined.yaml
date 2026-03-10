@@ -1,0 +1,65 @@
+# Phase 2: L1 + VJ8 Global Context Fine-tuning on AWF Dataset - Sophia Cluster
+# Runs all 16 experiments (4 techniques x 2 models x 2 clipping options) in one sweep
+#
+# Models:
+#   - L1 global: Best MSE+MAE from Phase 1 Global (latent=50, hidden=125, global conditioning)
+#   - VJ8 global: Reference architecture from Phase 1 Global (latent=100, hidden=250, global conditioning)
+#
+# Techniques:
+#   - F1: Full fine-tune (baseline)
+#   - F4: Decoder only trainable
+#   - F5: Full + weight anchoring
+#   - L2: LoRA rank 8
+#
+# Gradient clipping:
+#   - With clipping (clip_1.0)
+#   - Without clipping (_noclip suffix)
+#
+# Usage:
+#   sbatch scripts/sophia_phase2_global.sh
+#
+# Or manually:
+#   python main.py --config-name phase2_global_combined
+
+defaults:
+  - _self_
+  - data: awf_graphs
+  - data/io: GNO_probe
+  - optimizer: finetune_adam
+  - optimizer/batching: GNO_probe
+  - optimizer/validation: GNN
+  - model/regularization: dropout_layernorm
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff
+  - finetuning/gradient_clipping: clip_1.0
+  - finetuning/representation_consistency: disabled
+  - override hydra/launcher: submitit_slurm
+
+finetuning:
+  enabled: true
+
+wandb:
+  use: True
+  project: GNO_phase2_global
+
+output_base_dir: /work/users/jpsch/gno/outputs/transfer_learning/phase2_global
+
+hydra:
+  run:
+    dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${output_base_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}_${hydra.job.override_dirname}
+  mode: MULTIRUN
+  sweeper:
+    params:
+      # 16 experiments: 2 models x 4 techniques x 2 clipping options (cross-product)
+      +experiment: phase2/L1_global_F1,phase2/L1_global_F4,phase2/L1_global_F5,phase2/L1_global_L2,phase2/VJ8_global_F1,phase2/VJ8_global_F4,phase2/VJ8_global_F5,phase2/VJ8_global_L2
+      finetuning/gradient_clipping: clip_1.0,disabled
+
+  launcher:
+    array_parallelism: 8  # Run 8 jobs at a time
+    additional_parameters:
+      exclusive: True
+      time: "48:00:00"
+      nodes: 1
+      partition: fatq

@@ -6,6 +6,7 @@
 
 algorithm: adam
 n_epochs: 3000
+resumable: false  # Enable checkpoint-based auto-resume for SLURM resubmission
 
 early_stop:
   start_epoch: 25

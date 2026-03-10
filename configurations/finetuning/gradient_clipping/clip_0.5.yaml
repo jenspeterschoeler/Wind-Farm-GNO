@@ -1,0 +1,4 @@
+# Aggressive gradient clipping at global norm of 0.5
+# For very sensitive fine-tuning scenarios
+enabled: true
+max_norm: 0.5

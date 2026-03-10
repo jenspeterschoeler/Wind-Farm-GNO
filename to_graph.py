@@ -1,3 +1,5 @@
+"""Top-level graph conversion module."""
+
 from torch_geometric.data import Data as PyGData
 
 

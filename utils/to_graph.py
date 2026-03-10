@@ -1,5 +1,6 @@
+"""PyTorch Geometric to Jraph graph conversion utilities."""
+
 import math
-from typing import List
 
 import numpy as np
 import torch
@@ -7,7 +8,7 @@ from torch_geometric.data import Data as PyGData
 from torch_geometric.transforms import Cartesian, Delaunay, Distance, FaceToEdge, Polar
 
 
-def get_node_indexes(vars: List[str]) -> List[int]:
+def get_node_indexes(vars: list[str]) -> list[int]:
     if vars == ["U"]:
         node_indexes = [3]
     elif vars == ["U", "TI"]:
@@ -94,8 +95,8 @@ def to_graph(
     points: np.ndarray,
     connectivity: str = "delaunay",
     add_edge: str = "polar",
-    node_features: np.ndarray = None,
-    global_features: np.ndarray = None,
+    node_features: np.ndarray | None = None,
+    global_features: np.ndarray | None = None,
     rel_wd: float = 270,
     trunk_inputs=None,
     output_features=None,
@@ -116,18 +117,14 @@ def to_graph(
         graph = edge_fn(delaunay_fn(raw_graph_data))
 
     else:
-        raise ValueError(
-            "Please define the connectivity scheme (available types: : 'delaunay')"
-        )
+        raise ValueError("Please define the connectivity scheme (available types: : 'delaunay')")
 
     if add_edge == "polar".casefold():
         polar_fn = Polar(norm=False)
         graph = polar_fn(graph)
         if rel_wd is not None:
             edge_rel_wd = math.radians(270) - graph.edge_attr[:, 1]
-            graph.edge_attr = torch.cat(
-                (graph.edge_attr, edge_rel_wd.unsqueeze(1)), dim=1
-            )
+            graph.edge_attr = torch.cat((graph.edge_attr, edge_rel_wd.unsqueeze(1)), dim=1)
     elif add_edge == "cartesian".casefold():
         cartesian_fn = Cartesian(norm=False)
         distance_fn = Distance(norm=False)
@@ -139,7 +136,7 @@ def to_graph(
             "Please select a coordinate system that is supported (available types: : 'polar')"
         )
 
-    graph.n_node = torch.Tensor([node_features.shape[0]])
+    graph.n_node = torch.Tensor([node_features.shape[0]])  # type: ignore[attr-defined]
     graph.n_edge = torch.Tensor([graph.edge_attr.shape[0]])
 
     if node_features is not None:

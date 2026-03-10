@@ -1,0 +1,2 @@
+# LoRA disabled - no low-rank adaptation
+enabled: false

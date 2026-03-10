@@ -8,6 +8,7 @@ version = "0.1.0"
 
 [dependencies]
 python = "3.12.*"
+git = ">=2.40,<3"  # Include git in environment for run_info logging
 matplotlib = ">=3.10.5,<4"
 omegaconf = ">=2.3.0,<3"
 wandb = ">=0.21.0,<0.22"
@@ -15,21 +16,142 @@ tqdm = ">=4.67.1,<5"
 seaborn = ">=0.13.2,<0.14"
 pandas = ">=2.3.1,<3"
 debugpy = ">=1.8.17,<2"
-cuda-version = "12.*"
-jax = ">=0.7.2,<0.8"
-cuda-cudart = ">=12.9.79,<13"
-cuda-libraries = ">=12.9.1,<13"
-ipykernel = ">=7.1.0,<8"
 pympler = ">=1.1,<2"
+h5py = ">=3.8,<4"  # Explicit conda-forge dependency for older glibc compatibility
+jaxlib = "0.5.*"  # Explicit conda-forge dependency for older glibc compatibility (pinned to match JAX 0.5.0)
+lxml = ">=4.9,<6"  # Explicit conda-forge dependency for older glibc compatibility
+netcdf4 = ">=1.6,<2"  # Explicit conda-forge dependency for older glibc compatibility
+pyogrio = ">=0.9,<1"  # Explicit conda-forge dependency for older glibc compatibility
+pyproj = ">=3.5,<4"  # Explicit conda-forge dependency for older glibc compatibility
+pytorch = ">=2.0,<3"  # Explicit conda-forge dependency for older glibc compatibility (CPU-only)
+rasterio = ">=1.4.3,<2"  # Explicit conda-forge dependency for older glibc compatibility
+tensorstore = ">=0.1.60,<0.2"  # Explicit conda-forge dependency for older glibc compatibility (orbax downgraded to match)
+ruff = ">=0.8.6,<0.15"
+cmcrameri = ">=1.9,<2"
+# Note: jax is specified in [pypi-dependencies] for CPU-only and [feature.cuda.pypi-dependencies] for GPU
+# Note: pytest/pytest-cov/ipykernel removed from default - add to specific features if needed
 
 [pypi-dependencies]
 hydra-core = ">=1.3.2, <2"
 hydra-submitit-launcher = ">=1.2.0, <2"
 torch-geometric = ">=2.6.1, <3"
-jax = { version = ">=0.7.0, <0.8", extras = ["cuda12"] }
-optax = ">=0.2.5, <0.3"
-orbax-checkpoint = ">=0.11.22, <0.12"
-flax = ">=0.11.1, <0.12"
+jax = ">=0.5.0, <0.6"  # Compatible with jaxlib 0.5.x from conda-forge and orbax 0.11.7
+optax = ">=0.2.3, <0.3"  # Compatible with JAX 0.5.0
+orbax-checkpoint = ">=0.9.0, <0.10.0"  # Version compatible with JAX 0.5.x and conda tensorstore 0.1.65
+flax = ">=0.10.0, <0.12"  # Compatible with JAX 0.5.0
 jraph = ">=0.0.6.dev0, <0.0.7"
-torch = ">=2.8.0, <3"
+# Note: torch comes from conda-forge (pytorch package) for glibc compatibility
 py-wake = ">=2.6.14, <3"
+ty = ">=0.0.8, <0.0.9"
+matplotlib-map-utils = ">=3.1.1, <4"
+
+# CUDA/GPU feature - opt-in for GPU support on clusters
+# Note: No conda CUDA packages to avoid glibc >= 2.28 requirement (Sophia has glibc 2.17)
+# JAX[cuda12] bundles its own CUDA runtime, compatible with older glibc
+[feature.cuda.dependencies]
+# Intentionally empty - JAX[cuda12] bundles CUDA runtime
+
+[feature.cuda.pypi-dependencies]
+jax = { version = ">=0.5.0, <0.6", extras = ["cuda12"] }  # GPU-enabled JAX with bundled CUDA runtime
+
+[feature.dev.dependencies]
+# Code quality and formatting tools (all by Astral)
+ruff = ">=0.14.0,<0.15"
+pre-commit = ">=4.0.0,<5"
+# Testing tools
+pytest = ">=9.0.2,<10"
+pytest-cov = ">=7.0.0,<8"
+ipykernel = ">=7.1.0,<8"
+
+[feature.dev.pypi-dependencies]
+# ty - Astral's fast type checker (replaces mypy)
+ty = ">=0.0.8"
+
+[feature.dev.tasks]
+# Code formatting (ruff format replaces black + isort)
+format = "ruff format ."
+format-check = "ruff format --check ."
+
+# Linting (ruff check includes isort rules)
+lint = "ruff check ."
+lint-fix = "ruff check --fix ."
+
+# Type checking (ty replaces mypy)
+typecheck = "ty check ."
+
+# Run all quality checks
+quality = { depends-on = ["format-check", "lint", "typecheck"] }
+
+# Legacy cluster environment - compatible with old CentOS + CUDA 12
+[feature.cluster.dependencies]
+python = "==3.11.11"
+# Note: git not available on conda-forge for glibc 2.17. Code tries system git paths.
+matplotlib = "==3.10.0"
+omegaconf = "==2.3.0"
+pandas = "==2.2.3"
+numpy = "==2.2.2"
+scipy = "==1.15.1"
+seaborn = "==0.13.2"
+debugpy = "==1.8.14"
+ipykernel = "==6.29.5"
+pympler = "==1.1"
+pytest = ">=8.0,<9"
+pytest-cov = ">=4.0,<5"
+h5py = "==3.13.0"
+tqdm = "==4.67.1"
+netcdf4 = ">=1.6,<2"  # Use conda-forge version for glibc 2.17 compatibility
+# PyTorch CPU from conda-forge (matches old env)
+pytorch = "==2.6.0"
+numba = ">=0.63.1,<0.64"
+
+[feature.cluster.pypi-dependencies]
+# JAX with CUDA 12 (exact versions from working env)
+jax = { version = "==0.5.0", extras = ["cuda12"] }
+jaxlib = "==0.5.0"
+ml-dtypes = "==0.5.1"  # Pin to avoid glibc 2.27+ requirement (0.5.4+ needs glibc 2.27+)
+# NVIDIA CUDA packages (pin to manylinux_2_17 compatible versions from working env)
+nvidia-cublas-cu12 = "==12.4.5.8"
+nvidia-cuda-cupti-cu12 = "==12.4.127"
+nvidia-cuda-nvcc-cu12 = "==12.8.61"
+nvidia-cuda-nvrtc-cu12 = "==12.4.127"
+nvidia-cuda-runtime-cu12 = "==12.4.127"
+nvidia-cudnn-cu12 = "==9.1.0.70"
+nvidia-cufft-cu12 = "==11.2.1.3"
+nvidia-curand-cu12 = "==10.3.5.147"
+nvidia-cusolver-cu12 = "==11.6.1.9"
+nvidia-cusparse-cu12 = "==12.3.1.170"
+nvidia-cusparselt-cu12 = "==0.6.2"
+nvidia-nccl-cu12 = "==2.21.5"
+nvidia-nvjitlink-cu12 = "==12.4.127"
+nvidia-nvtx-cu12 = "==12.4.127"
+# JAX ecosystem
+flax = "==0.10.3"
+optax = "==0.2.4"
+orbax-checkpoint = "==0.11.18"
+tensorstore = "==0.1.71"  # Pin to avoid glibc 2.27+ requirement (0.1.80+ needs glibc 2.27+)
+jraph = "==0.0.6.dev0"
+# PyTorch ecosystem
+torch-geometric = "==2.6.1"
+# Hydra
+hydra-core = "==1.3.2"
+hydra-submitit-launcher = "==1.2.0"
+# Other packages
+py-wake = "==2.6.10"
+wandb = "==0.19.6"
+
+[environments]
+default = { solve-group = "default" }  # CPU-only (for CI and local testing)
+dev = { features = ["dev"], solve-group = "default" }  # CPU-only + dev tools
+cuda = { features = ["cuda"], solve-group = "cuda" }  # GPU-enabled for local development
+cluster = { features = ["cluster"], solve-group = "cluster", no-default-feature = true }  # Legacy cluster environment (old CentOS + CUDA 12) - standalone
+
+# Usage instructions for cluster environment:
+# 1. Install: pixi install -e cluster
+# 2. Activate: pixi shell -e cluster
+# 3. Run training: python train_GNO_probe.py
+#
+# This environment uses:
+# - Python 3.11.11 (vs 3.12.* in default)
+# - JAX 0.5.0 with CUDA 12 bundled runtime
+# - Exact package versions from working conda environment
+# - Compatible with old CentOS (glibc 2.17)

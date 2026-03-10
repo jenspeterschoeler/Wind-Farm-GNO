@@ -1,0 +1,6 @@
+# @package _global_
+# Phase 2: L1 global model trained from scratch (baseline)
+defaults:
+  - /model: WindfarmGNO_probe_L1_global
+
+pretrained_checkpoint_path: null

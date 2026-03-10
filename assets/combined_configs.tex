@@ -1,8 +1,8 @@
-% DO NOT EDIT THIS TABLE CHANGE IT IN CODE, SEE https://gitlab.windenergy.dtu.dk/superposition-operator/spo-operator-tests/-/blob/main/Experiments/articles_plotting/grid_search.py?ref_type=heads 
-\begin{table}
-\caption{Model and optimizer configurations used in the grid search. $\dagger$ indicates that the learning rate schedule was not triggered during training.}
+% DO NOT EDIT THIS TABLE CHANGE IT IN CODE, SEE https://gitlab.windenergy.dtu.dk/superposition-operator/spo-operator-tests/-/blob/main/Experiments/articles_plotting/grid_search.py?ref_type=heads
+\begin{table}[htb]
+\caption{Model and optimizer configurations used in the grid search.}
 \label{tab:model_and_opt_configs}
-\begin{tabular}{cp{2cm}cccc}
+\begin{tabular}{cp{1.3cm}cccc}
 \hline
 \multicolumn{6}{l}{\textbf{Model configurations}} \\
 ID & Latent dim. $Q$ & $L_\mathrm{int}$ & $q_\mathrm{int}$ & $L_\mathrm{dec}$ & $q_\mathrm{dec}$ \\
@@ -32,4 +32,9 @@ ID & LR type & LR & Triggers & $n_\mathrm{p}$ & $n_G$ \\
 9 & Piecewise constant$\dagger$ & 0.010 & [75, 150] & 500 & 2 \\
 \hline
 \end{tabular}
+\vspace{0.5em}
+\begin{minipage}{0.9\linewidth}
+\footnotesize
+$^{\dagger}$ Learning rate schedule was not triggered during training.
+\end{minipage}
 \end{table}

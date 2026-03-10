@@ -1,0 +1,85 @@
+# Phase 2: L1 Global Context Fine-tuning on AWF Dataset - Sophia Cluster
+# Runs all 40 experiments (20 techniques x 2 clipping options) in one sweep
+#
+# Model:
+#   - L1 global: Best Phase 1 architecture (latent=50, hidden=125, global conditioning)
+#
+# Techniques:
+#   F-series (no LoRA):
+#   - F2: Freeze embedder
+#   - F3: Freeze embedder + processor
+#   - F6: Freeze embedder + weight anchoring (lambda=0.001)
+#
+#   LoRA grid (rank x freezing x anchoring):
+#   - L1:  LoRA rank 4
+#   - L3:  LoRA rank 16
+#   - L4:  LoRA rank 8 + freeze embedder
+#   - L5:  LoRA rank 4 + freeze embedder
+#   - L6:  LoRA rank 4 + weight anchoring
+#   - L7:  LoRA rank 16 + freeze embedder
+#   - L8:  LoRA rank 8 + weight anchoring
+#   - L9:  LoRA rank 16 + weight anchoring
+#   - L10: LoRA rank 4 + freeze embedder + weight anchoring
+#   - L11: LoRA rank 8 + freeze embedder + weight anchoring
+#   - L12: LoRA rank 16 + freeze embedder + weight anchoring
+#   - L13: LoRA rank 4 + freeze embedder + processor
+#   - L14: LoRA rank 8 + freeze embedder + processor
+#   - L15: LoRA rank 16 + freeze embedder + processor
+#   - L16: LoRA rank 4 + freeze embedder + processor + weight anchoring
+#   - L17: LoRA rank 8 + freeze embedder + processor + weight anchoring
+#   - L18: LoRA rank 16 + freeze embedder + processor + weight anchoring
+#
+# Gradient clipping:
+#   - With clipping (clip_1.0)
+#   - Without clipping (disabled)
+#
+# Excludes already-run techniques: F1, F4, F5, L2
+#
+# Usage:
+#   sbatch scripts/sophia_phase2_L1_global.sh
+#
+# Or manually:
+#   python main.py --config-name phase2_L1_global_combined
+
+defaults:
+  - _self_
+  - data: awf_graphs
+  - data/io: GNO_probe
+  - optimizer: finetune_adam
+  - optimizer/batching: GNO_probe
+  - optimizer/validation: GNN
+  - model/regularization: dropout_layernorm
+  - model/RBF_dist_encoder: gaussian_cosine_cutoff
+  - finetuning/gradient_clipping: clip_1.0
+  - finetuning/representation_consistency: disabled
+  - override hydra/launcher: submitit_slurm
+
+finetuning:
+  enabled: true
+
+wandb:
+  use: True
+  project: GNO_phase2_global
+
+output_base_dir: /work/users/jpsch/gno/outputs/transfer_learning/phase2_global
+
+hydra:
+  run:
+    dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${output_base_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}_${hydra.job.override_dirname}
+  mode: MULTIRUN
+  sweeper:
+    params:
+      # 40 experiments: 20 techniques x 2 clipping options (cross-product)
+      +experiment: phase2/L1_global_F2,phase2/L1_global_F3,phase2/L1_global_F6,phase2/L1_global_L1,phase2/L1_global_L3,phase2/L1_global_L4,phase2/L1_global_L5,phase2/L1_global_L6,phase2/L1_global_L7,phase2/L1_global_L8,phase2/L1_global_L9,phase2/L1_global_L10,phase2/L1_global_L11,phase2/L1_global_L12,phase2/L1_global_L13,phase2/L1_global_L14,phase2/L1_global_L15,phase2/L1_global_L16,phase2/L1_global_L17,phase2/L1_global_L18
+      finetuning/gradient_clipping: clip_1.0,disabled
+
+  launcher:
+    array_parallelism: 8  # Run 8 jobs at a time
+    additional_parameters:
+      exclusive: True
+      time: "48:00:00"
+      nodes: 1
+      partition: fatq

@@ -1,0 +1,7 @@
+type: "GraphFarmsOperatorDataset"
+encoding: "torch"
+main_path: "./data-generation/data/awf_graphs_test"
+train_path: "./data-generation/data/awf_graphs_test/train_pre_processed"
+val_path: "./data-generation/data/awf_graphs_test/val_pre_processed"
+test_path: "./data-generation/data/awf_graphs_test/test_pre_processed"
+pre_processed: True

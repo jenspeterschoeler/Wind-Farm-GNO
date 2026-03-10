@@ -2,7 +2,7 @@ defaults:
   - _self_
   - data: large_graphs_nodes_sophia
   - data/io: GNO_probe
-  - model: WindfarmGNO_probe_wide
+  - model: WindfarmGNO_probe_best_vj8
   - model/regularization: dropout_layernorm
   - model/RBF_dist_encoder: gaussian_cosine_cutoff
   - optimizer: adam
@@ -19,4 +19,3 @@ output_base_dir: /work/users/jpsch/SPO_sophia_dir/outputs/GNO_probe_large  # Bas
 hydra:
   run:
     dir: ${output_base_dir}/single/${now:%Y-%m-%d}/${now:%H-%M-%S}  # Directory for single runs
-

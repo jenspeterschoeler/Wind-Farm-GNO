@@ -1,0 +1,11 @@
+# Extended fine-tuning optimizer configuration
+# 100 epochs instead of 50 for hero model refinement
+
+algorithm: adam
+n_epochs: 100  # Extended epochs for final refinement
+resumable: false
+
+early_stop:
+  start_epoch: 20  # Start early stopping later
+  criteria: 1e-7
+  patience: 20     # Higher patience (20 * 5 = 100 epochs max)

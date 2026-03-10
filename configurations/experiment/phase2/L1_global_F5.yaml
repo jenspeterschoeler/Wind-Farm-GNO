@@ -1,0 +1,9 @@
+# @package _global_
+# Phase 2: L1 global model with F5 (full fine-tune + weight anchoring)
+defaults:
+  - /model: WindfarmGNO_probe_L1_global
+  - /finetuning/lora: disabled
+  - /finetuning/freezing: disabled
+  - /optimizer/lr_schedule: finetune_constant
+
+pretrained_checkpoint_path: "/work/users/jpsch/gno/outputs/transfer_learning/phase1_global/multirun/2026-02-03/12-12-20/4_+experiment=phase1_global/L1_dropout_layernorm/model/checkpoints_best_mse/255"

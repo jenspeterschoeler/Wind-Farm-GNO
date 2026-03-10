@@ -1,0 +1,6 @@
+# Freeze embedder only (embed_node and embed_edge)
+# Useful for preserving learned feature embeddings
+enabled: true
+strategy: component
+frozen_components:
+  - embedder

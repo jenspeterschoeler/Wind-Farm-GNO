@@ -10,6 +10,8 @@ logs/*
 *.ipynb_checkpoints*
 *.vscode
 
+
+multirun/*
 data/*
 outputs/*
 *train_farm_graph_model*
@@ -18,9 +20,52 @@ outputs/*
 *.png
 *.pdf
 *.svg
-*.prof# pixi environments
+*.prof
+
+# Log files
+*.log
+*.err
+*.out
+
+# AWF dataset files (too large for git)
+data-generation/data/awf_database.nc
+data-generation/data/awf/
+data-generation/data/awf_graphs*/
+
+# pixi environments
 .pixi/*
 !.pixi/config.toml
 !data/mini_graphs*
 !assets/GNO*.png
 !assets/GNO*.svg
+
+# Generated PyWake datasets (all types)
+data-generation/data/turbopark_*/
+data-generation/data/*_test/
+data-generation/data/*_dataset/
+# Experiment cache directories (flow field data)
+Experiments/article_1/cache/
+Experiments/article_2/cache/
+assets/IEA740_flow_fields/
+
+# Allow only metadata files for sharing
+!data-generation/data/*/layouts_metadata.npz
+!data-generation/data/*/inflows_metadata.npz
+
+# Model checkpoints and evaluation results (regenerable)
+assets/best_model_S2/
+assets/best_model_L1_F1_phase2/
+assets/best_model_L2_global/
+assets/no_wake_baseline/
+assets/*/model/plots_best/
+assets/*/scale_stats.json
+!assets/best_model_L1_L3_phase2/scale_stats.json
+
+# Experiment outputs (regenerable)
+Experiments/*/outputs/
+
+# Personal/local test configurations
+configurations/*_local.yaml
+
+# WandB export files (root level)
+wandb_runs.csv

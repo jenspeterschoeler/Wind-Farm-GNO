@@ -1,17 +1,16 @@
+"""Graph construction and manipulation utilities."""
+
 import logging
-from typing import Tuple
 
 import jax
 import jax.numpy as jnp
 import jraph
 import numpy as np
 import torch
-from jraph._src import graph as gn_graph
 from jraph._src import utils as jraph_utils
 from omegaconf import DictConfig
 
 # from utils.run_pywake import simulate_farm #!commented to avoid loading pywake, issue with monkeypatch of asarray
-from utils.to_graph import append_globals_to_nodes
 from utils.torch_loader import sum_by_parts_torch
 
 logger = logging.getLogger(__name__)
@@ -34,7 +33,7 @@ def replace_nodes_with_globals(graph: jraph.GraphsTuple) -> jraph.GraphsTuple:
     by the global features for its respective graph.
     """
     # Repeat the global features for each node in each graph
-    repeated_globals = jnp.repeat(graph.globals, graph.n_node, axis=0)
+    repeated_globals = jnp.repeat(graph.globals, graph.n_node, axis=0)  # type: ignore[arg-type]
 
     # Replace the nodes with the repeated global features
     updated_graph = graph._replace(nodes=repeated_globals)
@@ -44,7 +43,7 @@ def replace_nodes_with_globals(graph: jraph.GraphsTuple) -> jraph.GraphsTuple:
 
 def get_padded_sizes(
     cfg: DictConfig,
-) -> Tuple[int, int, int]:
+) -> tuple[int, int, int]:
     assert cfg.optimizer.batching.type == "dynamic_graph_batching"
     max_nodes = cfg.data.stats.graph_size["max_n_nodes"]
     max_edges = cfg.data.stats.graph_size["max_n_edges"]
@@ -57,21 +56,20 @@ def get_padded_sizes(
         # For the padding function to work the max graphs has to be more than 1
         padded_max_graphs = 2
 
-    padded_max_nodes = jnp.ceil(max_nodes * max_node_ratio * padded_max_graphs)
-    padded_max_edges = jnp.ceil(max_edges * max_edge_ratio * padded_max_graphs)
+    padded_max_nodes = int(jnp.ceil(max_nodes * max_node_ratio * padded_max_graphs))
+    padded_max_edges = int(jnp.ceil(max_edges * max_edge_ratio * padded_max_graphs))
 
     return padded_max_nodes, padded_max_edges, padded_max_graphs
 
 
 def get_dynamic_batchning_max_sizes(iterator):
-    "Function to estimate the maximum sizes graph components in the dataset for dynamic batching."
-    # TODO Put inside compute_dataset_stats.py ??!
+    """Estimate the maximum sizes of graph components in the dataset for dynamic batching."""
     max_nodes = 0
     max_edges = 0
     for graph in iterator:
         max_nodes = max(max_nodes, graph.n_node)
         max_edges = max(max_edges, graph.n_edge)
-    return max_nodes[0], max_edges[0]
+    return max_nodes, max_edges
 
 
 def get_test_graph(type: str = "double_graph"):
@@ -196,8 +194,8 @@ def get_test_graph(type: str = "double_graph"):
         padded_test_graph = jraph_utils.pad_with_graphs(
             test_graph,
             n_graph=3,
-            n_node=(jnp.sum(test_graph.n_node) * 1.25).astype(jnp.int32),
-            n_edge=(jnp.sum(test_graph.n_edge) * 1.5).astype(jnp.int32),
+            n_node=int((jnp.sum(test_graph.n_node) * 1.25).astype(jnp.int32).item()),
+            n_edge=int((jnp.sum(test_graph.n_edge) * 1.5).astype(jnp.int32).item()),
         )
         test_graph = padded_test_graph
 
@@ -217,9 +215,7 @@ def get_test_graph_operator_pair(type: str = "empty"):
         test_graph = get_test_graph(type="graph_padded_graphs")
         assert test_graph.n_node.shape[0] == 2
         test_trunk_input = jnp.ones((1, 3))
-        test_trunk_input = jnp.concatenate(
-            [test_trunk_input, jnp.zeros((1, 3))], axis=0
-        )
+        test_trunk_input = jnp.concatenate([test_trunk_input, jnp.zeros((1, 3))], axis=0)
 
     elif type == "double":
         test_graph = get_test_graph(type="double_graph")
@@ -234,24 +230,20 @@ def get_test_graph_operator_pair(type: str = "empty"):
         test_graph = get_test_graph(type="double_padded_graph")
         assert test_graph.n_node.shape[0] == 3
         test_trunk_input = jnp.ones((2, 3))
-        test_trunk_input = jnp.concatenate(
-            [test_trunk_input, jnp.zeros((1, 3))], axis=0
-        )
+        test_trunk_input = jnp.concatenate([test_trunk_input, jnp.zeros((1, 3))], axis=0)
 
     elif type == "double_padded_clone":
         test_graph = get_test_graph(type="double_clone_graph")
         padded_test_graph = jraph_utils.pad_with_graphs(
             test_graph,
             n_graph=3,
-            n_node=(jnp.sum(test_graph.n_node) * 1.25).astype(jnp.int32),
-            n_edge=(jnp.sum(test_graph.n_edge) * 1.5).astype(jnp.int32),
+            n_node=int((jnp.sum(test_graph.n_node) * 1.25).astype(jnp.int32).item()),
+            n_edge=int((jnp.sum(test_graph.n_edge) * 1.5).astype(jnp.int32).item()),
         )
         test_graph = padded_test_graph
         assert test_graph.n_node.shape[0] == 3
         test_trunk_input = jnp.ones((2, 3))
-        test_trunk_input = jnp.concatenate(
-            [test_trunk_input, jnp.zeros((1, 3))], axis=0
-        )
+        test_trunk_input = jnp.concatenate([test_trunk_input, jnp.zeros((1, 3))], axis=0)
 
     else:
         raise ValueError(
@@ -329,10 +321,7 @@ def construct_probe_graphs(
         ]
     )
     senders = np.concat(
-        [
-            np.tile(np.arange(n) + n_old, n_probes)
-            for n, n_old in zip(n_nodes, node_count)
-        ]
+        [np.tile(np.arange(n) + n_old, n_probes) for n, n_old in zip(n_nodes, node_count)]
     )
 
     ### Receivers
@@ -350,9 +339,7 @@ def construct_probe_graphs(
 
     ### Edges
     probe_positions_flat = probe_positions.reshape(-1, 2)
-    wt_to_probe_edges = (
-        node_pos[senders, :] - probe_positions_flat[probe_index_locals, :]
-    )
+    wt_to_probe_edges = node_pos[senders, :] - probe_positions_flat[probe_index_locals, :]
     # append distances to the probe positions
     distances = np.sqrt(np.sum(wt_to_probe_edges**2, axis=1)).reshape(-1, 1)
     wt_to_probe_edges = np.concatenate([wt_to_probe_edges, distances], axis=1)
@@ -360,9 +347,9 @@ def construct_probe_graphs(
     n_edges = graphs.n_node * n_probes
 
     ## Nodes
-    assert (
-        len(input_node_feature_idxs) == graphs.globals.shape[-1]
-    ), "The input_node_feature_idxs must match the number of node features in the globals."  # TODO Improve this to mean they are the same dimension exactly not just shape
+    assert len(input_node_feature_idxs) == graphs.globals.shape[-1], (
+        "The input_node_feature_idxs must match the number of node features in the globals."
+    )  # TODO Improve this to mean they are the same dimension exactly not just shape
     probe_node_features = np.concatenate(
         [
             graphs.nodes[
@@ -399,8 +386,8 @@ def construct_probe_graphs(
     probe_graphs = jraph.GraphsTuple(
         nodes=probe_node_features,
         edges=wt_to_probe_edges,
-        senders=senders,
-        receivers=probe_receivers,
+        senders=senders,  # type: ignore[arg-type]
+        receivers=probe_receivers,  # type: ignore[arg-type]
         globals=graphs.globals,
         n_node=n_node_total,
         n_edge=n_edges,
@@ -432,35 +419,35 @@ def torch_pyg_to_jraph(
     pyg_batch,
     graphs_only: bool = False,
     probe_graphs: bool = True,
-    input_node_feature_idxs=[2, 3],
-    target_node_feature_idxs=[0],
+    input_node_feature_idxs=None,
+    target_node_feature_idxs=None,
     add_pos_to_nodes: bool = True,
     add_pos_to_edges: bool = True,
     return_idxs: bool = False,
     return_positions: bool = False,
 ):
     # Extract node features, edge indices, and edge features
+    if target_node_feature_idxs is None:
+        target_node_feature_idxs = [0]
+    if input_node_feature_idxs is None:
+        input_node_feature_idxs = [2, 3]
     node_features = pyg_batch.node_features
     edge_indices = pyg_batch.edge_index
     edge_features = pyg_batch.edge_attr if pyg_batch.edge_attr is not None else None
 
     if add_pos_to_nodes:
         feature_index = np.concatenate([input_node_feature_idxs, [-2, -1]])
-        node_features = torch.cat(
-            [node_features, pyg_batch.pos], dim=1
-        )  # TODO Currently there are different beahviours depending on model, make decsions when GNO is re-introduced
+        node_features = torch.cat([node_features, pyg_batch.pos], dim=1)
     else:
         feature_index = input_node_feature_idxs
 
     if add_pos_to_edges:
         # find the position of receivers, receivers because the edge_attr is the position of the sender from the reciever
         receiver_pos = pyg_batch.pos[pyg_batch.edge_index[0, :]]
-        edge_features = torch.cat([edge_features, receiver_pos], dim=1)
+        edge_features = torch.cat([edge_features, receiver_pos], dim=1)  # type: ignore[call-overload]
 
     # Extract graph-level features if available
-    graph_features = (
-        pyg_batch.global_features if hasattr(pyg_batch, "global_features") else None
-    )
+    graph_features = pyg_batch.global_features if hasattr(pyg_batch, "global_features") else None
 
     # Compute number of nodes and edges per graph
     if pyg_batch.batch is not None:
@@ -474,13 +461,9 @@ def torch_pyg_to_jraph(
     # Convert to jax.numpy arrays
     node_features = jnp.array(node_features.numpy())
     edge_indices = jnp.array(edge_indices.numpy())
-    edge_features = (
-        jnp.array(edge_features.numpy()) if edge_features is not None else None
-    )
+    edge_features = jnp.array(edge_features.numpy()) if edge_features is not None else None
 
-    graph_features = (
-        jnp.array(graph_features.numpy()) if graph_features is not None else None
-    )
+    graph_features = jnp.array(graph_features.numpy()) if graph_features is not None else None
     n_node = jnp.array(n_node.numpy())
     n_edge = jnp.array(n_edge)
 
@@ -492,7 +475,6 @@ def torch_pyg_to_jraph(
     # Create jraph.GraphsTuple
 
     if graphs_only:
-
         jraph_graph = jraph.GraphsTuple(
             nodes=node_features[..., feature_index],
             edges=edge_features,
@@ -505,7 +487,6 @@ def torch_pyg_to_jraph(
 
         return jraph_graph
     else:
-
         trunk_inputs = jnp.array(trunk_inputs.numpy())
         output_features = jnp.array(output_features.numpy())
         if probe_graphs:
@@ -528,7 +509,11 @@ def torch_pyg_to_jraph(
                 return_positions=return_positions,
             )
             if return_idxs:
-                idxs = jnp.array(idxs)
+                # Get idxs from pyg_batch if available, otherwise use all indices
+                if hasattr(pyg_batch, "idxs"):
+                    idxs = jnp.array(pyg_batch.idxs)
+                else:
+                    idxs = jnp.arange(trunk_inputs.shape[1])
                 array_tuple += (idxs,)
 
             return (
@@ -553,14 +538,14 @@ def torch_pyg_to_jraph(
     )
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # type: ignore
     # test pad single graph
     graph = jraph.GraphsTuple(
-        n_node=np.array([2], dtype=np.int32),
-        n_edge=np.array([1], dtype=np.int32),
+        n_node=np.array([2], dtype=np.int32),  # type: ignore[arg-type]
+        n_edge=np.array([1], dtype=np.int32),  # type: ignore[arg-type]
         nodes=np.array([[1.0], [2.0]]),
         edges=np.array([[1.0]]),
-        senders=np.array([0], dtype=np.int32),
-        receivers=np.array([1], dtype=np.int32),
+        senders=np.array([0], dtype=np.int32),  # type: ignore[arg-type]
+        receivers=np.array([1], dtype=np.int32),  # type: ignore[arg-type]
         globals=np.array([[1.0]]),
     )

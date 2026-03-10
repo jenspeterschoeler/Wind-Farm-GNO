@@ -1,0 +1,5 @@
+# @package _global_
+# Phase 1 Global: S3 + global conditioning + dropout_layernorm
+defaults:
+  - /model: WindfarmGNO_probe_S3_global
+  - /model/regularization: dropout_layernorm

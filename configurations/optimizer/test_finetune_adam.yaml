@@ -1,0 +1,12 @@
+# Test fine-tuning optimizer configuration
+# Reduced epoch count for quick validation runs (10 epochs vs 50)
+# Used for testing transfer learning infrastructure on CPU queues
+
+algorithm: adam
+n_epochs: 10  # Quick validation (vs 50 for production fine-tuning)
+resumable: false
+
+early_stop:
+  start_epoch: 2   # Start early stopping earlier for short runs
+  criteria: 1e-7   # Stop when validation loss change < criteria
+  patience: 3      # Patience of 3 validation intervals

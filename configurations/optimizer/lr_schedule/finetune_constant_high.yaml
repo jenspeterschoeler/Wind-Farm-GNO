@@ -1,0 +1,5 @@
+# High learning rate for fine-tuning
+# More aggressive adaptation
+
+type: "constant"
+learning_rate: 1e-4  # 2x higher than standard fine-tune LR

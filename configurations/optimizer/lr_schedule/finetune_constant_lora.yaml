@@ -1,0 +1,13 @@
+# LoRA fine-tuning learning rate schedule
+# Higher learning rate than standard fine-tuning since LoRA adapters
+# are freshly initialized and need to learn from scratch
+
+type: "constant"
+learning_rate: 1e-4  # 2x higher than standard fine-tune LR (5e-5)
+
+# Rationale:
+# - LoRA adapters start from random initialization
+# - Higher LR helps adapters converge faster
+# - Base model weights are frozen, so no risk of catastrophic forgetting
+# - Can increase to 5e-4 if underfitting occurs
+# - Can decrease to 5e-5 if training is unstable

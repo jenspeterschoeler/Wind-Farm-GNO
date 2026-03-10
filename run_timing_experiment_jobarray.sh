@@ -20,7 +20,7 @@ echo ------------------------------------------------------
 echo Date: $(date)
 echo Sophia job is running on node: ${NODE_ID}
 echo Sophia job identifier: $SLURM_JOBID
-echo ------------------------------------------------------ 
+echo ------------------------------------------------------
 
 
 source ~/.bashrc

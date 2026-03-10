@@ -1,0 +1,266 @@
+{
+    "data": {
+        "encoding": "torch",
+        "io": {
+            "add_pos_to_edges": false,
+            "add_pos_to_nodes": true,
+            "graph_components_target": "nodes",
+            "input_node_features": [
+                "U",
+                "TI"
+            ],
+            "target_node_features": [
+                "u"
+            ],
+            "type": "GNO_probe"
+        },
+        "main_path": "/work/users/jpsch/gno/data-generation/data/awf_graphs",
+        "pre_processed": true,
+        "scale_stats": {
+            "ct": {
+                "min": null,
+                "range": null
+            },
+            "distance": {
+                "min": -18543.19921875,
+                "range": 98421.59375
+            },
+            "scaling_method": "run4",
+            "scaling_type": "min_max",
+            "ti": {
+                "min": [
+                    0.030434273183345795
+                ],
+                "range": [
+                    0.21918028593063354
+                ]
+            },
+            "velocity": {
+                "min": [
+                    2.655970335006714
+                ],
+                "range": [
+                    22.299211502075195
+                ]
+            }
+        },
+        "stats": {
+            "date_ISO8601": "2026-01-19T18:09:48",
+            "edge_features": {
+                "max": [
+                    16459.77734375,
+                    26300.8515625,
+                    26568.84765625
+                ],
+                "mean": [
+                    4.793474644992912e-15,
+                    -1.1301723445988898e-15,
+                    1935.660400390625
+                ],
+                "min": [
+                    -16459.77734375,
+                    -26300.8515625,
+                    545.2012939453125
+                ],
+                "std": [
+                    1645.62060546875,
+                    1713.38916015625,
+                    1377.31201171875
+                ],
+                "variance": [
+                    2708067.0,
+                    2935702.5,
+                    1896988.375
+                ]
+            },
+            "global_features": {
+                "max": [
+                    24.9538631439209,
+                    0.24961455166339874
+                ],
+                "mean": [
+                    14.582365036010742,
+                    0.1429997682571411
+                ],
+                "min": [
+                    4.047848701477051,
+                    0.030434273183345795
+                ],
+                "std": [
+                    5.84401273727417,
+                    0.06163007766008377
+                ],
+                "variance": [
+                    34.15248489379883,
+                    0.0037982664071023464
+                ]
+            },
+            "graph_size": {
+                "max_n_edges": 1140,
+                "max_n_globals": 2,
+                "max_n_nodes": 197
+            },
+            "max_indexes": 699,
+            "n_graphs": 700,
+            "node_features": {
+                "max": 24.524099349975586,
+                "mean": [
+                    14.162238121032715
+                ],
+                "min": 2.655970335006714,
+                "std": [
+                    5.7258219718933105
+                ],
+                "variance": [
+                    32.7850341796875
+                ]
+            },
+            "output": {
+                "max": 24.955181121826172,
+                "mean": [
+                    14.42556381225586
+                ],
+                "min": 3.262803792953491,
+                "std": [
+                    5.842723846435547
+                ],
+                "variance": [
+                    34.137420654296875
+                ]
+            },
+            "trunk": {
+                "max": [
+                    79878.3984375,
+                    18543.19921875
+                ],
+                "mean": [
+                    35352.4375,
+                    -8.673617379884035e-16
+                ],
+                "min": [
+                    -11411.2001953125,
+                    -18543.19921875
+                ],
+                "std": [
+                    25833.939453125,
+                    5544.693359375
+                ],
+                "variance": [
+                    667392384.0,
+                    30743622.0
+                ]
+            },
+            "trunk_shape": [
+                14649,
+                2
+            ]
+        },
+        "test_path": "/work/users/jpsch/gno/data-generation/data/awf_graphs/test_pre_processed",
+        "train_path": "/work/users/jpsch/gno/data-generation/data/awf_graphs/train_pre_processed",
+        "type": "GraphFarmsOperatorDataset",
+        "val_path": "/work/users/jpsch/gno/data-generation/data/awf_graphs/val_pre_processed"
+    },
+    "finetuning": {
+        "enabled": true,
+        "freezing": {
+            "enabled": false
+        },
+        "gradient_clipping": {
+            "enabled": false
+        },
+        "lora": {
+            "alpha": 32,
+            "enabled": true,
+            "rank": 16,
+            "target_modules": [
+                "Dense"
+            ]
+        },
+        "representation_consistency": {
+            "enabled": false
+        },
+        "weight_anchoring": {
+            "enabled": false
+        }
+    },
+    "model": {
+        "RBF_dist_encoder": {
+            "extrema_strategy": "pre_processed_ones",
+            "learnable": true,
+            "num_kernels": 9,
+            "type": "gaussian_cosine_cutoff"
+        },
+        "decoder_hidden_layer_size": 448,
+        "decoder_strategy": "separate",
+        "hidden_layer_size": 320,
+        "latent_size": 128,
+        "n_aggregation_heads": 1,
+        "num_decoder_layers": 4,
+        "num_mlp_layers": 2,
+        "output_shape": 1,
+        "probe_message_passing_steps": 1,
+        "regularization": {
+            "decoder_dropout_rate": 0.10000000149011612,
+            "encoder_dropout_rate": 0.10000000149011612,
+            "layer_norm_decoder": false,
+            "layer_norm_encoder": true,
+            "layer_norm_processor": true,
+            "layer_norm_trunk": true,
+            "message_norm": false,
+            "processor_dropout_rate": 0.10000000149011612,
+            "trunk_dropout_rate": 0.10000000149011612
+        },
+        "res_net": true,
+        "scale_rel_ws": false,
+        "type": "WindfarmGNO_probe_v2",
+        "use_distance_aware": false,
+        "use_global_conditioning": true,
+        "wt_message_passing_steps": 4
+    },
+    "model_save_path": "/work/users/jpsch/gno/outputs/transfer_learning/phase2_global/multirun/2026-02-23/11-20-35/9_+experiment=phase2/L1_global_L3,finetuning/gradient_clipping=disabled/model",
+    "optimizer": {
+        "algorithm": "adam",
+        "batching": {
+            "max_edge_ratio": 1,
+            "max_graph_size": 5,
+            "max_node_ratio": 1,
+            "n_probe": 200,
+            "num_workers": 12,
+            "prefetch_factor": 2,
+            "torch_batch": 1,
+            "type": "dynamic_graph_batching"
+        },
+        "early_stop": {
+            "criteria": 1.0000000116860974e-07,
+            "patience": 200,
+            "start_epoch": 50
+        },
+        "lr_schedule": {
+            "learning_rate": 9.999999747378752e-05,
+            "type": "constant"
+        },
+        "n_epochs": 1000,
+        "resumable": false,
+        "validation": {
+            "num_workers": 12,
+            "prefetch_factor": 2,
+            "rate_of_validation": 3,
+            "torch_batch": 1
+        }
+    },
+    "output_base_dir": "/work/users/jpsch/gno/outputs/transfer_learning/phase2_global",
+    "pretrained_checkpoint_path": "/work/users/jpsch/gno/outputs/transfer_learning/phase1_global/multirun/2026-02-03/12-12-20/4_+experiment=phase1_global/L1_dropout_layernorm/model/checkpoints_best_mse/255",
+    "run_info": {
+        "TimeInitiatedTraining": "2026-02-23T15:10:52",
+        "available_devices": "[CudaDevice(id=0)]",
+        "conda_env": "spo-operator-tests:cluster",
+        "git_commit": "6019aed04fc7419f318e6acdd1135a093810c4cd",
+        "hostname": "sn114.hpc.ait.dtu.dk",
+        "platform": "Linux-3.10.0-957.12.2.el7.x86_64-x86_64-with-glibc2.17",
+        "python_version": "3.11.11"
+    },
+    "wandb": {
+        "project": "GNO_phase2_global",
+        "use": true
+    }
+}

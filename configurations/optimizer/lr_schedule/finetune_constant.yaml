@@ -1,0 +1,12 @@
+# Fine-tuning learning rate schedule
+# Lower learning rate to preserve pretrained features
+# Typically 10-100x lower than pretraining LR
+
+type: "constant"
+learning_rate: 5e-5  # 20x lower than standard 1e-3 pretraining LR
+
+# Rationale:
+# - Conservative to avoid catastrophic forgetting
+# - Allows gentle adaptation to new dataset
+# - Can increase to 1e-4 if underfitting occurs
+# - Can decrease to 1e-5 if overfitting occurs

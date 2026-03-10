@@ -1,0 +1,25 @@
+# S2 (~25% of Vj8) with global conditioning only
+# For Phase 1 global context architecture search
+#
+
+type: "WindfarmGNO_probe"
+
+# Architecture (same as S2)
+latent_size: 50
+hidden_layer_size: 125
+num_mlp_layers: 2
+num_decoder_layers: 2
+decoder_hidden_layer_size: 175
+decoder_strategy: "separate"
+res_net: True
+
+# WT GNN Settings
+wt_message_passing_steps: 2
+
+# Probe GNN Settings
+probe_message_passing_steps: 1
+
+# Scale outputs
+scale_rel_ws: False
+
+use_global_conditioning: True

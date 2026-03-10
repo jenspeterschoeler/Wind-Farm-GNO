@@ -1,0 +1,9 @@
+# @package _global_
+# Phase 2: S1 global model with L3 (LoRA rank 16)
+defaults:
+  - /model: WindfarmGNO_probe_S1_global
+  - /finetuning/lora: rank16
+  - /finetuning/freezing: disabled
+  - /optimizer/lr_schedule: finetune_constant_lora
+
+pretrained_checkpoint_path: "/work/users/jpsch/gno/outputs/transfer_learning/phase1_global/multirun/2026-02-03/12-12-20/1_+experiment=phase1_global/S1_dropout_layernorm/model/checkpoints_best_mse/603"

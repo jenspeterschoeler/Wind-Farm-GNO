@@ -1,21 +1,31 @@
 """
 Windfarm_GNO_probe.py:
-=================
-A variation of the DeepGraphOperatorNetwork (DeepGraphONet) model by Sun et. al. [1]. Termed a Graph Neural Operator (GNO),
-The GNO combines the spaces of Graph Learning and Operator Learning by combining Message Passing Graph Networks (originally based on the GraphSAGE with Graph Convolutional Network [2] but here DeeperGCN is used [3]) and DeepOperatorNetwork (DeepONet)[4]. In addtition a non-linear decoder is used inspired bu the NOn-linear MAnifold Decoder (NOMAD) [5] architecture. The GEN-block is chosen beacuse it performed best in [6].
+=========================
 
-[1] Sun, Y., Moya, C., Lin, G., & Yue, M. (2022). DeepGraphONet: A Deep Graph Operator Network to Learn and Zero-shot Transfer the Dynamic Response of Networked Systems. http://arxiv.org/abs/2209.10622
-[2] Hamilton, W. L., Ying, R., & Leskovec, J. (2017). Inductive Representation Learning on Large Graphs. http://arxiv.org/abs/1706.02216
-[3] Li, G., Xiong, C., Thabet, A., & Ghanem, B. (2020). DeeperGCN: All You Need to Train Deeper GCNs. http://arxiv.org/abs/2006.07739
-[4] Lu, L., Jin, P., Pang, G., Zhang, Z., & Karniadakis, G. E. (2021). Learning nonlinear operators via DeepONet based on the universal approximation theorem of operators. Nature Machine Intelligence, 3(3), 218–229. https://doi.org/10.1038/s42256-021-00302-5
-[5] Seidman, J. H., Kissas, G., Perdikaris, P., & Pappas, G. J. (2022). NOMAD: Nonlinear Manifold Decoders for Operator Learning. http://arxiv.org/abs/2206.03551
-[6] de Santos, F. N., Duthé, G., Abdallah, I., Réthoré, P.-É., Weijtjens, W., Chatzi, E., & Devriendt, C. (n.d.). Multivariate prediction on wake-affected wind
-turbines using graph neural networks. https://doi.org/10.3929/ethz-b-000674010
+Graph Neural Operator (GNO) model for wind farm flow prediction with optional
+global conditioning support.
 
+A variation of the DeepGraphOperatorNetwork (DeepGraphONet) model by Sun et. al. [1].
+Termed a Graph Neural Operator (GNO), it combines Graph Learning and Operator Learning
+by integrating Message Passing Graph Networks with DeepOperatorNetwork (DeepONet)[4].
+
+[1] Sun, Y., Moya, C., Lin, G., & Yue, M. (2022). DeepGraphONet: A Deep Graph Operator
+    Network to Learn and Zero-shot Transfer the Dynamic Response of Networked Systems.
+[2] Hamilton, W. L., Ying, R., & Leskovec, J. (2017). Inductive Representation Learning
+    on Large Graphs.
+[3] Li, G., Xiong, C., Thabet, A., & Ghanem, B. (2020). DeeperGCN: All You Need to Train
+    Deeper GCNs.
+[4] Lu, L., Jin, P., Pang, G., Zhang, Z., & Karniadakis, G. E. (2021). Learning nonlinear
+    operators via DeepONet.
+[5] Seidman, J. H., Kissas, G., Perdikaris, P., & Pappas, G. J. (2022). NOMAD: Nonlinear
+    Manifold Decoders for Operator Learning.
+[6] de Santos, F. N., Duthé, G., Abdallah, I., Réthoré, P.-É., Weijtjens, W., Chatzi, E.,
+    & Devriendt, C. (n.d.). Multivariate prediction on wake-affected wind turbines using
+    graph neural networks.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 import jax.numpy as jnp
 import jraph
@@ -36,18 +46,26 @@ class Windfarm_GNO_probe(nn.Module):
     num_mlp_layers: int
     wt_message_passing_steps: int
     probe_message_passing_steps: int
-    decoder_hidden_layer_size: int = None
-    num_decoder_layers: int = None
-    decoder_strategy: str = "shared"  #! shared or separate
+    decoder_hidden_layer_size: int | None = None
+    num_decoder_layers: int | None = None
+    decoder_strategy: str = "shared"
     encoder_dropout_rate: float = 0.0
     processor_dropout_rate: float = 0.0
     layer_norm_encoder: bool = False
     layer_norm_processor: bool = False
     message_norm: bool = False
-    layer_norm_decoder: bool = False  #! Should always be false
+    layer_norm_decoder: bool = False
     res_net: bool = False
-    RBF_encoder_kwargs: Dict[str, Any] = None
+    RBF_encoder_kwargs: dict[str, Any] | None = None
     epsilon: float = 1e-6
+    # Global conditioning parameter
+    use_global_conditioning: bool = False
+    # LoRA parameters - granular control per component
+    use_lora_embedder: bool = False
+    use_lora_processor: bool = False
+    use_lora_decoder: bool = False
+    lora_rank: int = 8
+    lora_alpha: float = 16.0
 
     def setup(self):
         super().setup()
@@ -59,21 +77,23 @@ class Windfarm_GNO_probe(nn.Module):
         probe_graphs: jraph.GraphsTuple,
         wt_mask: jnp.ndarray,
         probe_mask: jnp.ndarray,
-        train: bool = False,  #! True during training, only releveant for dropout
+        train: bool = False,
     ) -> jnp.ndarray:
-
         ### Pre-process
         pre_processed_graphs, pre_processed_probe_graphs = self.embedder(
             graphs, probe_graphs, train
         )
 
-        ### Get wind turbine state with the "classic" GNN, # ? could from here to decoder be put inside a loop?
-        pre_processed_probe_graphs, latentspace_nodes = self.wt_procesor(
+        ### Get wind turbine state with the "classic" GNN
+        pre_processed_probe_graphs, latentspace_nodes = self.wt_processor(
             pre_processed_graphs, pre_processed_probe_graphs, wt_mask, probe_mask, train
         )
 
         # Message pass to the probe positions
-        processed_probe_nodes = self.probe_procesor(pre_processed_probe_graphs, train)
+        processed_probe_nodes = self.probe_processor(pre_processed_probe_graphs, train)
+
+        # Extract globals for conditioning if enabled
+        globals_context = graphs.globals if self.use_global_conditioning else None
 
         ## Decoder
         new_nodes = self.decoder(
@@ -82,6 +102,7 @@ class Windfarm_GNO_probe(nn.Module):
             wt_mask,
             probe_mask,
             probe_graphs,
+            globals_context=globals_context,  # type: ignore[invalid-argument-type]
         )
         return new_nodes
 
@@ -92,9 +113,7 @@ class Windfarm_GNO_probe(nn.Module):
             RBF_encoder = RBFEncoder(**self.RBF_encoder_kwargs)
 
             def RBF_encode_distances(jraph_graphs):
-                encoded_edges = RBF_encoder(
-                    jraph_graphs.edges
-                )  #! THIS ASSUMES THAT THE EDGES ARE ALL DISTANCES
+                encoded_edges = RBF_encoder(jraph_graphs.edges)
                 _encoded_edges_raveled = jnp.transpose(encoded_edges, (0, 2, 1))
                 encoded_edges_raveled = _encoded_edges_raveled.reshape(
                     encoded_edges.shape[0],
@@ -117,6 +136,9 @@ class Windfarm_GNO_probe(nn.Module):
             activation=nn.relu,
             dropout_rate=self.encoder_dropout_rate,
             layer_norm=self.layer_norm_encoder,
+            use_lora=self.use_lora_embedder,
+            lora_rank=self.lora_rank,
+            lora_alpha=self.lora_alpha,
         )
         embed_edge_fn = MLP(
             name="embed_edge",
@@ -125,6 +147,9 @@ class Windfarm_GNO_probe(nn.Module):
             activation=nn.relu,
             dropout_rate=self.encoder_dropout_rate,
             layer_norm=self.layer_norm_encoder,
+            use_lora=self.use_lora_embedder,
+            lora_rank=self.lora_rank,
+            lora_alpha=self.lora_alpha,
         )
 
         embedder = jraph.GraphMapFeatures(
@@ -144,7 +169,7 @@ class Windfarm_GNO_probe(nn.Module):
         return pre_processed_graphs, pre_processed_probe_graphs
 
     @nn.compact
-    def wt_procesor(
+    def wt_processor(
         self,
         pre_processed_graphs,
         pre_processed_probe_graphs,
@@ -154,61 +179,66 @@ class Windfarm_GNO_probe(nn.Module):
     ):
         # Encode the graph(windfarm) information into a latent space
         wt_GNN = Windfarm_GNN(
-            name="Windfarm_GNN_0",  #! same as automatically generated name, but specified after training to run wt_procceser separately
-            target_size=None,  # Inactive when decode=False
+            name="Windfarm_GNN_0",
+            target_size=self.target_size,
             latent_size=self.latent_size,
             hidden_layer_size=self.hidden_layer_size,
             num_mlp_layers=self.num_mlp_layers,
             message_passing_steps=self.wt_message_passing_steps,
-            decoder_hidden_layer_size=None,  # Inactive when decode=False
-            num_decoder_layers=None,  # Inactive when decode=False
-            encoder_dropout_rate=None,  # Inactive when encode=False
+            decoder_hidden_layer_size=self.decoder_hidden_layer_size,
+            num_decoder_layers=self.num_decoder_layers,
+            encoder_dropout_rate=self.encoder_dropout_rate,
             processor_dropout_rate=self.processor_dropout_rate,
-            layer_norm_encoder=None,  # Inactive when encode=False
+            layer_norm_encoder=self.layer_norm_encoder,
             layer_norm_processor=self.layer_norm_processor,
             message_norm=self.message_norm,
-            layer_norm_decoder=None,  # Inactive when decode=False
-            res_net=None,  # Inactive when decode=False
-            RBF_encoder_kwargs=None,  # Inactive when encode=False
+            layer_norm_decoder=self.layer_norm_decoder,
+            res_net=self.res_net,
+            RBF_encoder_kwargs=self.RBF_encoder_kwargs,
             epsilon=self.epsilon,
             encode=False,
-            decode=False,  # Option added to obtain the latentspace representation rather than the node predictions
+            decode=False,
+            use_lora_embedder=False,
+            use_lora_processor=self.use_lora_processor,
+            use_lora_decoder=False,
+            lora_rank=self.lora_rank,
+            lora_alpha=self.lora_alpha,
         )
 
         latentspace_nodes = wt_GNN(pre_processed_graphs, train=train)
-        latentspace_nodes = (
-            latentspace_nodes * wt_mask + pre_processed_graphs.nodes * probe_mask
-        )
+        latentspace_nodes = latentspace_nodes * wt_mask + pre_processed_graphs.nodes * probe_mask
 
-        pre_processed_probe_graphs = pre_processed_probe_graphs._replace(
-            nodes=latentspace_nodes
-        )
+        pre_processed_probe_graphs = pre_processed_probe_graphs._replace(nodes=latentspace_nodes)
         return pre_processed_probe_graphs, latentspace_nodes
 
     @nn.compact
-    def probe_procesor(self, pre_processed_probe_graphs, train=False):
-
+    def probe_processor(self, pre_processed_probe_graphs, train=False):
         # Message pass to the probe positions
         probe_GNN = Windfarm_GNN(
-            name="Windfarm_GNN_1",  #! same as automatically generated name, but specified after training to run probe_procceser separately
-            target_size=None,  # Inactive when decode=False
+            name="Windfarm_GNN_1",
+            target_size=self.target_size,
             latent_size=self.latent_size,
             hidden_layer_size=self.hidden_layer_size,
             num_mlp_layers=self.num_mlp_layers,
             message_passing_steps=self.probe_message_passing_steps,
-            decoder_hidden_layer_size=None,  # Inactive when decode=False
-            num_decoder_layers=None,  # Inactive when decode=False
-            encoder_dropout_rate=None,  # Inactive when encode=False
+            decoder_hidden_layer_size=self.decoder_hidden_layer_size,
+            num_decoder_layers=self.num_decoder_layers,
+            encoder_dropout_rate=self.encoder_dropout_rate,
             processor_dropout_rate=self.processor_dropout_rate,
-            layer_norm_encoder=None,  # Inactive when encode=False
+            layer_norm_encoder=self.layer_norm_encoder,
             layer_norm_processor=self.layer_norm_processor,
             message_norm=self.message_norm,
-            layer_norm_decoder=None,  # Inactive when decode=False
-            res_net=None,  # Inactive when decode=False
-            RBF_encoder_kwargs=None,  # Inactive when encode=False
+            layer_norm_decoder=self.layer_norm_decoder,
+            res_net=self.res_net,
+            RBF_encoder_kwargs=self.RBF_encoder_kwargs,
             epsilon=self.epsilon,
             encode=False,
-            decode=False,  #
+            decode=False,
+            use_lora_embedder=False,
+            use_lora_processor=self.use_lora_processor,
+            use_lora_decoder=False,
+            lora_rank=self.lora_rank,
+            lora_alpha=self.lora_alpha,
         )
 
         processed_probe_nodes = probe_GNN(pre_processed_probe_graphs, train=train)
@@ -222,6 +252,7 @@ class Windfarm_GNO_probe(nn.Module):
         wt_mask,
         probe_mask,
         probe_graphs,
+        globals_context: jnp.ndarray | None = None,
     ):
         ## Decoder
         if self.decoder_hidden_layer_size is None:
@@ -233,10 +264,36 @@ class Windfarm_GNO_probe(nn.Module):
         else:
             num_decoder_layers = self.num_decoder_layers
 
-        if self.decoder_strategy == "shared":
-            processed_probe_nodes = (
-                latentspace_nodes * wt_mask + processed_probe_nodes * probe_mask
+        # Process global conditioning if enabled
+        global_embedding = None
+        if self.use_global_conditioning and globals_context is not None:
+            global_context_mlp = MLP(
+                name="global_context_mlp",
+                feature_sizes=[self.hidden_layer_size],
+                output_size=self.latent_size,
+                activation=nn.relu,
+                dropout_rate=0.0,
+                layer_norm=False,
             )
+            # Project globals to latent space
+            global_embedding = global_context_mlp(globals_context)  # [batch_size, latent_size]
+
+            # Broadcast to all nodes using JIT-compatible searchsorted
+            n_node = probe_graphs.n_node
+            total_nodes = processed_probe_nodes.shape[0]
+            sum_n_node = jnp.cumsum(n_node)
+            node_indices = jnp.arange(total_nodes)
+            node_graph_idx = jnp.searchsorted(sum_n_node, node_indices, side="right")
+            global_broadcast = jnp.take(global_embedding, node_graph_idx, axis=0)
+
+        if self.decoder_strategy == "shared":
+            processed_probe_nodes = latentspace_nodes * wt_mask + processed_probe_nodes * probe_mask
+
+            # Concatenate global embedding if available
+            if global_embedding is not None:
+                decoder_input = jnp.concatenate([processed_probe_nodes, global_broadcast], axis=-1)
+            else:
+                decoder_input = processed_probe_nodes
 
             decoder = MLP(
                 name="decoder",
@@ -245,12 +302,22 @@ class Windfarm_GNO_probe(nn.Module):
                 activation=nn.relu,
                 dropout_rate=0.0,
                 layer_norm=self.layer_norm_decoder,
+                use_lora=self.use_lora_decoder,
+                lora_rank=self.lora_rank,
+                lora_alpha=self.lora_alpha,
             )
-            delta_nodes = decoder(processed_probe_nodes)
+            delta_nodes = decoder(decoder_input)
 
         elif self.decoder_strategy == "separate":
             wt_decoder_input = latentspace_nodes * wt_mask
             probe_decoder_input = processed_probe_nodes * probe_mask
+
+            # Concatenate global embedding if available
+            if global_embedding is not None:
+                wt_decoder_input = jnp.concatenate([wt_decoder_input, global_broadcast], axis=-1)
+                probe_decoder_input = jnp.concatenate(
+                    [probe_decoder_input, global_broadcast], axis=-1
+                )
 
             decoder_wt = MLP(
                 name="decoder_wt",
@@ -259,6 +326,9 @@ class Windfarm_GNO_probe(nn.Module):
                 activation=nn.relu,
                 dropout_rate=0.0,
                 layer_norm=self.layer_norm_decoder,
+                use_lora=self.use_lora_decoder,
+                lora_rank=self.lora_rank,
+                lora_alpha=self.lora_alpha,
             )
             decoder_probe = MLP(
                 name="decoder_probe",
@@ -267,17 +337,21 @@ class Windfarm_GNO_probe(nn.Module):
                 activation=nn.relu,
                 dropout_rate=0.0,
                 layer_norm=self.layer_norm_decoder,
+                use_lora=self.use_lora_decoder,
+                lora_rank=self.lora_rank,
+                lora_alpha=self.lora_alpha,
             )
             delta_nodes_wt = decoder_wt(wt_decoder_input)
             delta_nodes_probe = decoder_probe(probe_decoder_input)
             delta_nodes = delta_nodes_wt * wt_mask + delta_nodes_probe * probe_mask
 
+        # Initialize new_nodes to prevent UnboundLocalError when res_net=False
+        new_nodes = delta_nodes
+
         if self.res_net:
             """This only works if the initial values are U and TI"""
-            new_nodes = (
-                probe_graphs.nodes[:, 0:1] + delta_nodes
-            )  # Only U because added TI flow map does not exist currently, "0:1" makes sure it is 0 but leaves the extra dimension
+            new_nodes = probe_graphs.nodes[:, 0:1] + delta_nodes
 
-        node_mask = wt_mask + probe_mask  # excludes padding nodes
+        node_mask = wt_mask + probe_mask
         new_nodes = new_nodes * node_mask
         return new_nodes

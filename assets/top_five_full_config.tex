@@ -1,0 +1,27 @@
+% DO NOT EDIT THIS TABLE CHANGE IT IN CODE, SEE https://gitlab.windenergy.dtu.dk/superposition-operator/spo-operator-tests/-/blob/main/Experiments/articles_plotting/grid_search.py?ref_type=heads
+\begin{table*}[htb]
+\caption{Top 5 models from grid search with full configuration parameters and training/validation metrics.}
+\label{tab:top_five_full_config}
+\centering
+\small
+\begin{tabular}{p{0.5cm}p{0.5cm}p{0.4cm}|p{0.4cm}p{0.7cm}p{0.4cm}p{0.7cm}p{0.5cm}|p{0.4cm}p{1.25cm}p{0.6cm}p{0.8cm}|p{0.9cm}p{0.9cm}p{0.9cm}}
+\hline
+\multicolumn{3}{c|}{\textbf{IDs}} & \multicolumn{5}{c|}{\textbf{Model}} & \multicolumn{4}{c|}{\textbf{Optimizer}} & \multicolumn{3}{c}{\textbf{Metrics}} \\
+Grid search & Model ID & Opt. ID & $Q$ & $L_\mathrm{int}$ & $q_\mathrm{int}$ & $L_\mathrm{dec}$ & $q_\mathrm{dec}$ & LR type & LR & $n_\mathrm{p}$ & $n_G$ & $\mathrm{MSE_{trn}}$ [$\mathrm{m^2s^{-2}}$] & $\mathrm{MSE_{val}}$ [$\mathrm{m^2s^{-2}}$] & $\mathrm{MAE_{val}}$ [$\mathrm{ms^{-1}}$] \\
+\hline
+-- & -- & -- & \footnotesize{Latent dim.} & \footnotesize{Int. layers} & \footnotesize{Int. width} & \footnotesize{Dec. layers} & \footnotesize{Dec. width} & -- & -- & \footnotesize{Probes/ batch} & \footnotesize{Graphs/ batch} & -- & -- & -- \\
+\hline
+V & j & 8 & 100 & 2 & 250 & 3 & 350 & PC$^\dagger$ & $5\times 10^{-3}$ & 500 & 2 & 0.015 & \textbf{0.016} & \textbf{0.037} \\
+IV & k & 2 & 50 & 3 & 350 & 4 & 350 & PC & $5\times 10^{-3}$ & 200 & 5 & 0.015 & 0.016 & 0.038 \\
+IV & j & 2 & 100 & 2 & 250 & 3 & 350 & PC & $5\times 10^{-3}$ & 200 & 5 & \textbf{0.014} & 0.018 & 0.041 \\
+I & d & 1 & 150 & 2 & 200 & 3 & 250 & PC$^\dagger$ & $5\times 10^{-3}$ & 200 & 5 & 0.018 & 0.02 & 0.045 \\
+III & a & 6 & 150 & 2 & 100 & 3 & 150 & PC & $1\times 10^{-3}$ & 300 & 4 & 0.017 & 0.022 & 0.058 \\
+\hline
+\end{tabular}
+\vspace{0.5em}
+\begin{minipage}{0.95\linewidth}
+\footnotesize
+(PC) Piecewise constant\\
+$^{\dagger}$ LR schedule not triggered during training
+\end{minipage}
+\end{table*}

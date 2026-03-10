@@ -19,9 +19,7 @@ class RBFEncoder(nn.Module):
     def setup(self):
         # Define centers (mu) and scaling factors (beta)
         mu = jnp.linspace(self.d_min, self.d_max, self.num_kernels)
-        beta = jnp.ones(self.num_kernels) * (
-            self.num_kernels / (self.d_max - self.d_min)
-        )
+        beta = jnp.ones(self.num_kernels) * (self.num_kernels / (self.d_max - self.d_min))
 
         # Make learnable if required
         self.mu = self.param("mu", lambda rng: mu) if self.learnable else mu
@@ -42,11 +40,8 @@ class RBFEncoder(nn.Module):
 
 if __name__ == "__main__":
     import os
-    import sys
 
     import matplotlib.pyplot as plt
-
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     from utils.plotting import matplotlib_set_rcparams
 
@@ -59,9 +54,7 @@ if __name__ == "__main__":
 
     key = jax.random.PRNGKey(0)
     num_kernels = 9
-    rbf_layer = RBFEncoder(
-        num_kernels=num_kernels, d_min=d_min, d_max=d_max, learnable=True
-    )
+    rbf_layer = RBFEncoder(num_kernels=num_kernels, d_min=d_min, d_max=d_max, learnable=True)
     params = rbf_layer.init(key, distances)  # Initialize parameters
 
     encoded_distances = rbf_layer.apply(params, distances)
@@ -76,9 +69,7 @@ if __name__ == "__main__":
     line_styles = ["-", "--"]
     if num_kernels % 2 == 0:
         colors = colors + colors[::-1]
-        line_styles = [line_styles[0]] * (num_kernels // 2) + [line_styles[1]] * (
-            num_kernels // 2
-        )
+        line_styles = [line_styles[0]] * (num_kernels // 2) + [line_styles[1]] * (num_kernels // 2)
     elif num_kernels % 2 == 1:
         colors = colors + colors[-2::-1]
         line_styles = [line_styles[0]] * (1 + (num_kernels // 2)) + [line_styles[1]] * (
@@ -89,11 +80,9 @@ if __name__ == "__main__":
     for i in range(rbf_layer.num_kernels):
         plt.plot(
             distances,
-            encoded_distances[:, i],
+            encoded_distances[:, i],  # type: ignore[index]
             label=r"$\mu_\mathrm{RBF}^{("
-            f"{i+1}"
-            + r")}$"
-            + f"={mu[i]:.2f},",  # + r"$\beta_\mathrm{RBF}$="f"{beta[i]:.2f}",
+            f"{i + 1}" + r")}$" + f"={mu[i]:.2f},",  # + r"$\beta_\mathrm{RBF}$="f"{beta[i]:.2f}",
             color=colors[i],
             linestyle=line_styles[i],
         )

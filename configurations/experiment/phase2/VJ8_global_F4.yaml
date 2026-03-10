@@ -1,0 +1,9 @@
+# @package _global_
+# Phase 2: VJ8 global model with F4 (decoder only trainable)
+defaults:
+  - /model: WindfarmGNO_probe_best_vj8_global
+  - /finetuning/lora: disabled
+  - /finetuning/freezing: decoder_only_trainable
+  - /optimizer/lr_schedule: finetune_constant
+
+pretrained_checkpoint_path: "/work/users/jpsch/gno/outputs/transfer_learning/phase1_global/multirun/2026-02-03/12-12-20/0_+experiment=phase1_global/vj8_dropout_layernorm/model/checkpoints_best_mse/435"

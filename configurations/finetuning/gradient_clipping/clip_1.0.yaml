@@ -1,0 +1,4 @@
+# Gradient clipping at global norm of 1.0
+# Prevents exploding gradients during fine-tuning
+enabled: true
+max_norm: 1.0

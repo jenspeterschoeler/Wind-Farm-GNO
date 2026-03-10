@@ -1,0 +1,6 @@
+# @package _global_
+# Phase 1 Global: L1 + global conditioning + init_lr=0.001
+defaults:
+  - /model: WindfarmGNO_probe_L1_global
+  - /model/regularization: dropout_layernorm
+  - override /optimizer/lr_schedule: piecewise_constant_phase1_lr001
